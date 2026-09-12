@@ -14,13 +14,19 @@
 <meta property="og:image" content="https://greykit.com/games/pumaheart/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A faithful port of Lionheart (1997). Two prides of puma warriors on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta property="og:url" content="https://greykit.com/games/pumaheart/">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="PumaHeart">
+<meta name="twitter:description" content="A faithful port of Lionheart (1997). Two prides of puma warriors on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta name="twitter:image" content="https://greykit.com/games/pumaheart/og.png">
+<meta name="twitter:image:alt" content="A faithful port of Lionheart (1997). Two prides of puma warriors on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
 <style>
 /* ============================================================
    TOKENS — cybersec-CRT tribe palette. The :root values are
@@ -1605,7 +1611,19 @@ function attackEvents(res) {
     { type: "log", text: parts.join(" ") },
   ];
   if (res.removed) ev.push({ type: "sfx", name: res.killed ? "kill" : "hit" });
-  if (res.retreats && res.retreats.length) ev.push({ type: "sfx", name: "panic" });
+  if (res.retreats && res.retreats.length) {
+    ev.push({ type: "sfx", name: "panic" });
+    /* A unit shoved off the board, into an enemy or into its own King is
+       eliminated. Without this the casualty is invisible: the base simply
+       disappears and the log says only that someone panicked. */
+    for (const step of res.retreats) {
+      if (!step.dead) continue;
+      const u = byUid(G, step.uid);
+      ev.push({ type: "log",
+        text: `${G.players[u.side].name} ${defOf(u).name} is broken and lost at ${squareName(step.c, step.r)}.` });
+      ev.push({ type: "sfx", name: "kill" });
+    }
+  }
   /* One beat per link of the cascade, so a chain reaction reads as a chain. */
   ev.push({ type: "wait", delay: 220 + 70 * ((res.retreats && res.retreats.length) || 0) });
   return ev;
@@ -2818,6 +2836,129 @@ function tutorialDone() {
 }
 
 /* ============================================================
+   SCREENSHOT STATES
+   #shot=<name> drives the page to a fixed, reproducible board
+   so the README images can be regenerated from a seed instead
+   of being caught by hand. Motion and sound are off, and the
+   tutorial is suppressed, or the overlay lands in every frame.
+   ============================================================ */
+function botStep(side, skill) {
+  const grid = buildGrid(G);
+  const acts = legalActions(G, grid, side);
+  if (!acts.length || G.actionsLeft <= 0) { endTurn(G); return false; }
+  const plan = botChooseTurn(G, side, skill == null ? 2 : skill);
+  if (!plan.length) { endTurn(G); return false; }
+  for (const a of plan) {
+    const g2 = buildGrid(G);
+    if (!legalActions(G, g2, G.turn).some(x => sameAction(x, a))) break;
+    applyAction(G, a);
+    const v = checkVictory(G);
+    if (v) { G.result = v; G.gameOver = true; return true; }
+  }
+  return false;
+}
+
+function fastForward(actions) {
+  for (let i = 0; i < actions && !G.gameOver; i++) botStep(G.turn, 2);
+}
+
+const SHOTS = {
+  basic() {
+    newGame(7, { setup: "basic" });
+    log("The prides take the field.");
+  },
+
+  muster() {
+    newGame(7, { setup: "basic" });
+    UI.houseRules = defaultHouseRules();
+    UI.musterOpen = true; UI.musterSide = 0; UI.muster = basicSpec();
+    UI.muster.infantry = { bases: 3, figs: 4 };
+    UI.muster.heavy = { bases: 2, figs: 1 };
+    UI.muster.peasant = { bases: 1, figs: 4 };
+  },
+
+  midgame() {
+    newGame(21, { setup: "custom" });
+    /* Stop once the lines have actually met but well before the result is
+       settled -- a screenshot of an empty board or a finished one shows
+       nothing about the game. */
+    const start = G.units.reduce((n, u) => n + u.figs, 0);
+    for (let i = 0; i < 120 && !G.gameOver; i++) {
+      botStep(G.turn, 2);
+      if (start - G.units.reduce((n, u) => n + u.figs, 0) >= 8) break;
+    }
+    const kn = G.units.find(u => u.alive && u.side === 0 && u.type === "knight")
+           || G.units.find(u => u.alive && u.side === 0 && u.type !== "king");
+    if (kn) { UI.sel = kn.uid; UI.cur = idx(kn.c, kn.r); }
+  },
+
+  /* The rule hardest to describe in words: an Archer shooting over its own
+     front rank into the enemy line. */
+  archer() {
+    newGame(7, { setup: "basic" });
+    const ar = G.units.find(u => u.side === 0 && u.type === "archer");
+    ar.c = 4; ar.r = H - 1;
+    const screen = G.units.find(u => u.side === 0 && u.type === "infantry");
+    screen.c = 4; screen.r = H - 2;
+    const foe = G.units.find(u => u.side === 1 && u.type === "infantry");
+    foe.c = 4; foe.r = H - 4;
+    const foe2 = G.units.find(u => u.side === 1 && u.type === "infantry" && u !== foe);
+    foe2.c = 3; foe2.r = H - 3;
+    UI.sel = ar.uid; UI.cur = idx(ar.c, ar.r);
+    log("An Archer looses over its own front rank.");
+  },
+
+  /* A panic chain, shown with the dice that caused it still in the tray. */
+  panic() {
+    newGame(7, { setup: "basic" });
+    const inf = G.units.find(u => u.side === 0 && u.type === "infantry");
+    inf.c = 4; inf.r = 4; inf.figs = 2; inf.face = N;
+    const foe = G.units.find(u => u.side === 1 && u.type === "infantry");
+    foe.c = 4; foe.r = 3; foe.face = S;
+    const a1 = G.units.filter(u => u.side === 0 && u.type === "infantry")[1];
+    a1.c = 4; a1.r = 5;
+    const a2 = G.units.filter(u => u.side === 0 && u.type === "infantry")[2];
+    a2.c = 4; a2.r = 6;
+    HARNESS.forceFaces = [PANIC, PANIC];
+    applyAction(G, { kind: "attack", uid: inf.uid, defUid: foe.uid });
+    HARNESS.forceFaces = null;
+    log("Every die came up PANIC — the line buckles backwards.");
+    for (const step of (G.dice.retreats || [])) {
+      if (!step.dead) continue;
+      const u = byUid(G, step.uid);
+      log(`${G.players[u.side].name} ${defOf(u).name} is broken and lost at ${squareName(step.c, step.r)}.`);
+    }
+  },
+
+  gameover() {
+    newGame(21, { setup: "custom" });
+    let guard = 0;
+    while (!G.gameOver && guard++ < 4000) botStep(G.turn, 2);
+  },
+};
+
+function runShot(name) {
+  const fn = SHOTS[name];
+  if (!fn) return false;
+  UI.reducedMotion = true;
+  /* Not muted: headless capture has no audio device anyway, and the HUD
+     should not advertise "Sound off" in the README images. */
+  /* Reset every overlay and selection first. Shots are run back to back when
+     regenerating the images, and without this each one inherits the last
+     one's open muster or lit archer block. */
+  UI.musterOpen = false; UI.menuOpen = false; UI.helpOpen = false;
+  UI.tutorialOpen = false; UI.curtain = false; UI.curtainThen = null;
+  UI.sel = null; UI.cur = null; UI.rects = null;
+  UI.eventQueue = []; UI.animating = false; UI.advancing = false;
+  try { localStorage.setItem(TUTORIAL_KEY, "1"); } catch (e) {}
+  UI.headless = false;
+  fn();
+  updateAll();
+  document.body.setAttribute("data-shot", name);
+  return true;
+}
+
+/* ============================================================
    RULE TESTS — hand-built positions for the rules random play
    cannot reach. A full 4-dice base suffers a total panic once in
    1296 attacks, so the retreat cascade -- the single riskiest
@@ -3423,7 +3564,7 @@ window.__PH = {
   validateArmy, basicSpec, botMuster, specBases, specFigures, unitsFromSpec, MUSTER_ORDER,
   botChooseTurn, evaluate, expectedAttack, SKILL, assertInvariants, checkVictory,
   sfx, cycleSpeed, toggleMute, SPEED_FACTOR, perBaseOf, HOUSE_RULES, TUTORIAL,
-  openMenu, toggleHelp,
+  openMenu, toggleHelp, runShot, SHOTS,
   tryAction, activateSquare, get UI() { return UI; },
   legalActions, buildGrid, UNIT_DEFS, DICE_DIST,
 };
@@ -3438,12 +3579,14 @@ function syncRailHeight() {
 
 function boot() {
   validateTables();
+  const shot = /[#&]shot=([a-z]+)/.exec(location.hash);
   loadPrefs();
   UI.houseRules = defaultHouseRules();
   UI.menu.house = {};
   UI.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   renderRail();
   setupInput();
+  if (shot && runShot(shot[1])) { syncRailHeight(); return; }
   startGame();
   try {
     if (localStorage.getItem(TUTORIAL_KEY) !== "1") { UI.tutorialOpen = true; updateAll(); }

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="PumaHeart">
+<title>PumaHeart</title>
+<!-- The premise, not the category. A puma's head in PROFILE on a heraldic
+     shield: the profile is far more legible at 16px than a front view, and it
+     points somewhere, which is the whole game - facing is what every rule in
+     Lionheart turns on. Drawn as paths only; no font is involved. -->
+
+<!-- Shield: straight shoulders, drawn point. Reads as heraldry even tiny. -->
+<path d="M32 3 58 11v21c0 15-11 25-26 29C17 57 6 47 6 32V11z"
+      fill="none" stroke="#00ff41" stroke-width="4.5" stroke-linejoin="round"/>
+
+<!-- Puma head in profile, facing right. One mass, one ear, one muzzle wedge:
+     three shapes that survive being scaled to a favicon. -->
+<path d="M19 40c-4-8-2-16 5-20l-2-10 10 7c8-1 14 3 17 8l5 3-5 3c-1 6-8 10-16 10z"
+      fill="#00ff41"/>
+<!-- Eye and nose knocked out of the fill so they cannot smear into it -->
+<circle cx="38" cy="28" r="2.1" fill="#0a0a0a"/>
+<circle cx="45.5" cy="31" r="1.4" fill="#0a0a0a"/>
+
+<!-- A single amber chevron on the shield's point: the facing marker the board
+     itself uses, and the one note of the game's second colour. -->
+<path d="M26 52l6-5 6 5" fill="none" stroke="#ffb000" stroke-width="3.5"
+      stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
