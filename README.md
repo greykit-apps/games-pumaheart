@@ -75,8 +75,8 @@ Win by killing the enemy King, or by leaving it standing alone on the field.
   panic their victims, never panic themselves, and **change sides** when an enemy King bribes
   them.
 - **Three AI difficulties.** Squire plays greedily and is blind to threats; Knight looks a turn
-  ahead; Marshal searches wider. Measured over 150 games a side: Marshal beats Squire 93%,
-  Knight beats Squire 90%, Marshal beats Knight 61%.
+  ahead; Marshal searches wider. Measured over 150 games a side: Marshal beats Squire 87%,
+  Knight beats Squire 83%, Marshal beats Knight 78%.
 - **An opening library of eight shapes** — the printed line, an archer screen, a refused flank
   either way, a vanguard, everything forward, wide wings, held back. The AI draws from it by
   skill: a Squire lands on a weak shape about a quarter of the time, a Marshal under 1 in 300.
@@ -136,8 +136,11 @@ they are printed rules we offer a house rule against, and they are marked as suc
    re-roll** is the house rule that extends it, on the grounds that one die can otherwise never
    score the two hits armour needs.
 
-Plus one thing that is not a rule at all: the **60-round limit** exists so headless simulations
-terminate. It is off in human play.
+Plus two things that are not rules at all. Headless simulations run under a **60-round limit**
+so they terminate. And a real game is called a **stalemate at 200 rounds** — a backstop, not a
+rule: the AI could reach positions it judged not worth leaving, and with nothing to end the game
+it would stand there for ever. Measured over 120 games in the worst realistic case the longest
+that finished ran 80 rounds, so 200 can only be met by a game that has genuinely stopped.
 
 ## The Board Is 9×8, Not 9×10
 

@@ -1018,7 +1018,7 @@ function newGame(seed, opts) {
        terminate, and is off (0) in human play. */
     cfg: { setup: (opts && opts.setup) || "basic", opponent: "ai",
            massiveInfantry: false, partialBases: false, anchorKing: true,
-           noPeasantDuel: true, fortune: FORTUNE_EVEN, roundCap: 0 },
+           noPeasantDuel: true, fortune: FORTUNE_EVEN, roundCap: STALEMATE_CAP },
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* p.2: "There are two armies -- one gold, one silver." Gold is gold here.
        Silver is not: the CRT palette renders side 0 in phosphor green, and a
@@ -3092,6 +3092,74 @@ function posHash(P) {
   return h >>> 0;
 }
 
+/* THE FIDGET BREAK.
+
+   A customised army against an opponent who does not advance reaches
+   positions where the evaluator likes nothing: measured at round 21 of seed
+   1, every one of 37 legal actions scored zero or less -- best move -2, best
+   turn exactly 0.00, and even an available attack 0.00, because applyQuiet
+   rounds a Peasant's expected removal against armour down to none. The bot
+   took a zero-delta turn, and next turn took it back, for ever. Neither army
+   closed and nothing ended the game, human play having no round cap.
+
+   These three are smaller than the smallest difference the evaluator can
+   produce, so they never decide between actions it can tell apart. They
+   decide only between actions it calls equal, and there they say: hitting
+   something beats walking, walking towards the enemy beats walking away,
+   and turning on the spot is the least productive thing a unit can do. A
+   turn that genuinely opens a line still scores its W_ATTACK and wins on the
+   evaluation, far above this. */
+const TIE_ATTACK = 0.05, TIE_CLOSE = 0.02, TIE_TURN = -0.01;
+
+/* AND THE PRESSURE TO CLOSE.
+
+   Tie-breaks are not enough on their own, because the deadlock is not always
+   a tie. Seed 5 at round 200: three infantry could each step to rank 4 and
+   every one scored -5, because rank 4 is inside the enemy archers' block and
+   the evaluator prices that correctly. Standing off costs nothing and gains
+   nothing, so the bot stood off for six hundred rounds with all sixty
+   figures alive. It was playing not to lose, in a game you cannot draw.
+
+   So closing is worth more the longer the game has gone. Nothing before
+   round 10 -- a normal game is over by then, and these games average eight
+   -- and from there it grows until it outweighs what the enemy bows are
+   worth. It only ever pushes a unit FORWARD or onto a target; it never
+   makes a bad trade look good, because it is not added to the trade. */
+const PRESSURE_FROM = 10, PRESSURE_RATE = 1.5;
+
+/* The backstop, for the freeze the pressure does not reach: roughly one game
+   in three hundred, at the weakest tier, against an opponent who never moves
+   at all. Measured over 120 such games the longest that finished ran 80
+   rounds, median 36, so 200 is two and a half times anything legitimate and
+   can only be met by a game that has genuinely stopped. It ends as a
+   stalemate and says so, which beats hanging for ever. */
+const STALEMATE_CAP = 200;
+
+function closingPressure(P) {
+  return Math.max(0, ((P.round || 1) - PRESSURE_FROM)) * PRESSURE_RATE;
+}
+
+
+function progressTie(P, grid, a, side, push) {
+  if (a.kind === "attack" || a.kind === "bribe") return TIE_ATTACK + push;
+  const u = P.units.find(x => x.uid === a.uid);
+  const foeKing = kingOf(P, 1 - side);
+  if (!u || !foeKing) return 0;
+  const dist = (c, r) => Math.max(Math.abs(c - foeKing.c), Math.abs(r - foeKing.r));
+  if (a.kind === "move") return dist(a.c, a.r) < dist(u.c, u.r) ? TIE_CLOSE + push : 0;
+
+  /* A turn earns its keep only by opening a way forward: the square it comes
+     to face has to be empty, and nearer the enemy King than the one the unit
+     stands on. Without that, a line which has turned itself sideways is
+     wedged -- every unit blocked by the neighbour it faces, no move legal
+     anywhere on the board, and every turn worth exactly the same as every
+     other. Seed 5 sat like that for six hundred rounds with all sixty
+     figures alive, a Knight rocking between south and east for ever. */
+  const ahead = stepFrom(u.c, u.r, a.face, 1);
+  if (!inBoard(ahead.c, ahead.r) || grid[idx(ahead.c, ahead.r)]) return TIE_TURN;
+  return dist(ahead.c, ahead.r) < dist(u.c, u.r) ? TIE_CLOSE + push : TIE_TURN;
+}
+
 function botChooseTurn(P, side, skillIx) {
   const sk = SKILL[Math.max(0, Math.min(SKILL.length - 1, skillIx | 0))];
   const grid = buildGrid(P);
@@ -3099,7 +3167,8 @@ function botChooseTurn(P, side, skillIx) {
   if (!acts.length) return [];
 
   const base = evaluate(P, side, sk);
-  const scored = acts.map(a => ({ a, s: actionDelta(P, base, a, side, sk) }));
+  const push = closingPressure(P);
+  const scored = acts.map(a => ({ a, s: actionDelta(P, base, a, side, sk) + progressTie(P, grid, a, side, push) }));
   scored.sort((x, y) => y.s - x.s);
   const h = posHash(P);
 
@@ -3108,7 +3177,20 @@ function botChooseTurn(P, side, skillIx) {
      not merely a noisier one. Returning a single action is what makes it
      greedy: the phase machine calls back for the next one. */
   if (sk.beam <= 1) {
-    const pool = scored.slice(0, Math.min(4, scored.length));
+    /* Weak, not paralysed. It still draws blind from four, which is where
+       its weakness lives -- but only from four that DO something. Drawing
+       from the top four outright let a Squire pass over the only productive
+       action three times in four, and against an opponent who does not
+       advance either, that is a game with no end.
+
+       Narrowing it to "comparable to the best" was the first attempt and it
+       was worse: it made the Squire nearly greedy, and it started beating a
+       Knight. The tie-breaks above are what make this filter work -- an
+       attack or a closing move is above zero even when the evaluator is
+       indifferent, and a turn on the spot is below it. */
+    const useful = scored.filter(x => x.s > 0);
+    const from = useful.length ? useful : scored;
+    const pool = from.slice(0, Math.min(4, from.length));
     return [pool[h % pool.length].a];
   }
 
@@ -3704,7 +3786,7 @@ function houseRulesToCfg(hr) {
            partialBases: !!hr.partialBases,
            noPeasantDuel: !hr.peasantDuel,
            anchorKing: !hr.freeKing,
-           roundCap: hr.useRoundCap ? 60 : 0 };
+           roundCap: hr.useRoundCap ? 60 : STALEMATE_CAP };
 }
 
 /* Fortune is a difficulty knob rather than a rule override, so it rides in
@@ -5090,6 +5172,35 @@ const RULE_TESTS = [
     return true;
   }],
 
+  ["a game against an opponent who never advances still ends", () => {
+    /* The stall this guards was real and lasted six hundred rounds with all
+       sixty figures alive. Human play has no round cap, so a bot that will
+       not close is a game that cannot finish. Customised armies only: the
+       printed opening never produced it. */
+    for (const seed of [5, 9, 13]) {
+      newGame(seed, { setup: "custom" });
+      G.cfg.roundCap = 0;
+      G.players[0].isBot = false;
+      G.players[1].isBot = true; G.players[1].skill = 1;
+      let steps = 0, over = false;
+      while (steps++ < 300) {
+        if (G.turn === 0) { G.actionsLeft = 0; endTurn(G); continue; }
+        const plan = botChooseTurn(G, G.turn, 1);
+        if (!plan.length) { endTurn(G); continue; }
+        for (const a of plan) {
+          const grid = buildGrid(G);
+          if (!legalActions(G, grid, G.turn).some(x => sameAction(x, a))) break;
+          applyAction(G, a);
+          if (checkVictory(G)) { over = true; break; }
+        }
+        if (over) break;
+        endTurn(G);
+      }
+      if (!over) return false;
+    }
+    return true;
+  }],
+
   ["taking the field ends deployment and starts play", () => {
     UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
     startGame(59, { setup: "custom", opponent: "ai" });
@@ -5203,6 +5314,7 @@ window.__PH = {
   botChooseTurn, evaluate, expectedAttack, SKILL, assertInvariants, checkVictory,
   sfx, cycleSpeed, toggleMute, SPEED_FACTOR, perBaseOf, HOUSE_RULES, COACH,
   OPENINGS, pickOpening, placeArmy, FORTUNE, fortuneFor, rollDice,
+  actionDelta, sideScore, applyQuiet, snapshot,
   openMenu, toggleHelp, runShot, SHOTS,
   deployPlace, deployFace, deployAuto, deployReady, inDeployZone, deployRows,
   tryAction, activateSquare, get UI() { return UI; },
