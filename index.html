@@ -1002,7 +1002,8 @@ function newGame(seed, opts) {
     /* roundCap is NOT a printed rule. It exists only so headless sims
        terminate, and is off (0) in human play. */
     cfg: { setup: (opts && opts.setup) || "basic", opponent: "ai",
-           massiveInfantry: false, partialBases: true, anchorKing: false, roundCap: 0 },
+           massiveInfantry: false, partialBases: false, anchorKing: true,
+           noPeasantDuel: true, roundCap: 0 },
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* p.2: "There are two armies -- one gold, one silver." Gold is gold here.
        Silver is not: the CRT palette renders side 0 in phosphor green, and a
@@ -3475,28 +3476,37 @@ function loadPrefs() {
    printed rule at all, it exists only so headless simulations terminate, and
    offering it as a choice invites someone to switch on a rule the game does
    not have. The flag stays in cfg for runSim to set. */
+/* Off is the printed game -- the rulebook as written, and where it is silent,
+   the most literal reading of what it does say. Every switch here is an
+   override: three of ours, and one the rulebook supplies itself. None of them
+   is on unless you turn it on, so what ships is Larry Harris's game. */
 const HOUSE_RULES = [
   { key: "massiveInfantry", name: "Massive Infantry",
-    source: "Printed optional rule, rulebook p.8",
-    note: "All 20 Infantry a side, up to 10 on a base. Never more than 4 dice. “If both players agree.”" },
-  { key: "strictBases", name: "Bases must be filled",
-    source: "Our reading of a gap in the rules",
-    note: "The rulebook prints fixed counts for basic units but calls 4 “the standard limit”, so we allow under-filled bases. Turn this on for the strict reading." },
-  { key: "anchorKing", name: "King starts on the royal emblem",
-    source: "Printed rule, rulebook p.6",
-    note: "“Your King must start on the royal emblem in the back row.” We leave the King free to deploy anywhere on your two ranks like every other base. Turn this on to hold it to the centre of the back row, where nothing may swap with it either." },
-  { key: "noPeasantDuel", name: "No re-roll for a lone Peasant",
-    source: "Our reading of a gap in the rules",
-    note: "The re-roll that lets a single figure hurt armour is printed for Infantry and Archers only. We extend it to Peasants, since one die can otherwise never score the two hits armour needs. Turn this on for the literal reading." },
+    source: "The rulebook's own option, p.8",
+    note: "All 20 Infantry a side, up to 10 on a base, never more than 4 dice. Printed as an option rather than a rule: “if both players agree.”" },
+  { key: "partialBases", name: "Bases may be under-filled",
+    source: "Our house rule",
+    note: "As printed, a basic base carries its full count — a Knight base is 2 Knights, an Infantry base 4. The Massive Infantry rule calls 4 “the standard limit”, which reads as a maximum, so this lets you field a 3-man Infantry base or a lone Knight." },
+  { key: "freeKing", name: "The King deploys freely",
+    source: "Our house rule",
+    note: "As printed, p.6: “Your King must start on the royal emblem in the back row”, and nothing may swap onto that square. This frees it to go anywhere on your two ranks like every other base." },
+  { key: "peasantDuel", name: "Lone Peasants get the re-roll",
+    source: "Our house rule",
+    note: "The re-roll that lets a single figure hurt armour is printed for Infantry and Archers and never mentioned for Peasants. This extends it to them, since one die can otherwise never score the two hits armour needs." },
 ];
 
 function defaultHouseRules() {
-  return { massiveInfantry: false, strictBases: false, useRoundCap: false,
-           noPeasantDuel: false, anchorKing: false, partialBases: true };
+  return { massiveInfantry: false, partialBases: false, freeKing: false,
+           peasantDuel: false, useRoundCap: false };
 }
+/* The engine keeps its own polarity -- noPeasantDuel and anchorKing describe
+   restrictions, which is what the rules functions want to ask about. This is
+   the one place the two vocabularies meet. */
 function houseRulesToCfg(hr) {
-  return { massiveInfantry: !!hr.massiveInfantry, partialBases: !hr.strictBases,
-           noPeasantDuel: !!hr.noPeasantDuel, anchorKing: !!hr.anchorKing,
+  return { massiveInfantry: !!hr.massiveInfantry,
+           partialBases: !!hr.partialBases,
+           noPeasantDuel: !hr.peasantDuel,
+           anchorKing: !hr.freeKing,
            roundCap: hr.useRoundCap ? 60 : 0 };
 }
 
@@ -3543,10 +3553,9 @@ function renderMenu() {
       ${m.opponent === "ai" ? `<dt>Difficulty</dt><dd>${skills}</dd>` : ""}
     </dl>
     <details class="disclose"${UI.menuAdvanced ? " open" : ""}>
-      <summary>House rules <span class="dim">&mdash; all off by default</span></summary>
-      <p class="prov-head">Three places the 1997 rules are silent, where our reading is the
-        default; one printed rule we play without; and the rulebook's own optional rule.
-        Each says where it comes from.</p>
+      <summary>House rules <span class="dim">&mdash; all off, so this is the printed game</span></summary>
+      <p class="prov-head">Off is Larry Harris's game as written. Each switch is an override:
+        three of ours, and one the rulebook offers itself.</p>
       <ul class="house">${house}</ul>
     </details>
     <div class="muster-actions">
@@ -3608,8 +3617,8 @@ function renderHelp() {
        own King or a Mercenary <i>kills the retreating unit</i>. Watch for chain reactions.</p>
     <p><b>Winning.</b> Kill the enemy King, or leave it standing alone on the field.</p>
     <p><b>Your battle plan.</b> A customised army is placed by you, in secret, before a shot is
-       fired: every base, the King included, goes anywhere on your back rank or the one in
-       front, facing wherever you like. Pick a base, then a
+       fired: your King holds the royal emblem in the centre of the back row, and every other
+       base goes anywhere on that rank or the one in front, facing wherever you like. Pick a base, then a
        square to move it, or another base to swap them. Bunch in the middle, or send the riders
        wide to turn a flank &mdash; the rulebook's own words are &ldquo;You&rsquo;re in
        command!&rdquo; Leaving the muster and the line exactly as they stand gives you the
@@ -3959,11 +3968,10 @@ function deployRows(side) {
 function inDeployZone(side, c, r) {
   return inBoard(c, r) && deployRows(side).includes(r);
 }
-/* p.6: "Your King must start on the royal emblem in the back row." Printed,
-   and unambiguous -- but the author has the board in front of him and plays
-   it free, so the King deploys like any other base by default and the printed
-   placement is a house rule. Off means free; on holds it to the square it
-   started on, which nothing may swap with either. */
+/* p.6: "Your King must start on the royal emblem in the back row." That is
+   what ships. Freeing the King to deploy like any other base is a house rule
+   -- the author plays it that way, with the board in front of him -- and it
+   is his to switch on, not ours to assume. */
 function isAnchored(u) { return u.type === "king" && !!(G.cfg && G.cfg.anchorKing); }
 
 function deployingSide() { return G.phase === "deploy" ? G.deploySide : -1; }
@@ -4044,7 +4052,8 @@ function renderDeployBar() {
   const side = G.deploySide;
   el.innerHTML = `<span class="box-label">Battle Plan</span>
     <p class="dep-who"><span class="side s${side}">${esc(G.players[side].name)}</span>
-      &mdash; place your line on the near two ranks, the King among them.</p>
+      &mdash; place your line on the near two ranks.
+      ${G.cfg.anchorKing ? "The King holds the royal emblem." : "The King goes where you like."}</p>
     <p class="dim">Pick a base, then a square to move it, or another base to swap them.
       The two curved arrows in a selected base's front corners turn it.</p>
     <div class="muster-actions">
@@ -4173,7 +4182,8 @@ function showCombat(res, done) {
 function testPosition(specs) {
   G = {
     v: 1, seed: 1, rng: 1,
-    cfg: { setup: "basic", massiveInfantry: false, partialBases: true, roundCap: 60 },
+    cfg: { setup: "basic", massiveInfantry: false, partialBases: true,
+           noPeasantDuel: true, anchorKing: true, roundCap: 60 },
     phase: "play", step: "test", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* Players belong here even though no test reads them: without the array
        any render of a test position throws, which makes __PH.ruleTests()
@@ -4393,11 +4403,26 @@ const RULE_TESTS = [
     return win.duel && win.removed === 1 && miss.removed === 0 && pan.panicSteps === 1 && !u[0].alive === false;
   }],
 
-  ["a lone Peasant gets the two-hit re-roll, scoring by its own most-of rule", () => {
-    const mk = () => testPosition([
+  ["as printed, a lone Peasant gets no re-roll against armour", () => {
+    const u = testPosition([
       { side: 0, type: "peasant", figs: 1, c: 4, r: 5, face: N },
       { side: 1, type: "knight", figs: 2, c: 4, r: 4, face: S },
     ]);
+    force([AXE, AXE]);
+    const res = attackWith(u[0], u[1]);
+    /* One die, one hit, and armour needs two in the same attack. */
+    return !res.duel && res.removed === 0;
+  }],
+
+  ["the lone-Peasant house rule grants the re-roll, scored by most-of", () => {
+    const mk = () => {
+      const u = testPosition([
+        { side: 0, type: "peasant", figs: 1, c: 4, r: 5, face: N },
+        { side: 1, type: "knight", figs: 2, c: 4, r: 4, face: S },
+      ]);
+      G.cfg.noPeasantDuel = false;          /* houseRulesToCfg: peasantDuel on */
+      return u;
+    };
     let u = mk(); force([AXE, AXE]);
     const both = attackWith(u[0], u[1]);
     u = mk(); force([AXE, ARROW]);
@@ -4713,35 +4738,42 @@ const RULE_TESTS = [
     return u.c === oc && u.r === or_ && other.c === uc && other.r === ur;
   }],
 
-  ["the King deploys freely by default, and nothing leaves the zone", () => {
+  ["as printed, the King holds the royal emblem and nothing leaves the zone", () => {
     UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
-    startGame(57, { setup: "custom", opponent: "ai" });
-    const king = G.units.find(u => u.side === 0 && u.type === "king");
-    const other = G.units.find(u => u.side === 0 && u.type !== "king");
-    const kingMoves = deployPlace(king, 0, H - 1) && king.c === 0 && king.r === H - 1;
-    /* ...and may be swapped with, which the printed placement forbids. */
-    const kc = king.c, kr = king.r, oc = other.c, or_ = other.r;
-    const kingSwaps = deployPlace(other, kc, kr) &&
-                      other.c === kc && other.r === kr && king.c === oc && king.r === or_;
-    /* "...you may place your other figures on that row and the row in front." */
-    const zoneHeld = !deployPlace(other, 4, 3) && !deployPlace(other, 4, 0);
-    return kingMoves && kingSwaps && zoneHeld;
-  }],
-
-  ["the royal-emblem house rule pins the King and blocks the swap", () => {
-    UI.pendingOpponent = "ai";
-    UI.houseRules = Object.assign(defaultHouseRules(), { anchorKing: true });
     startGame(57, Object.assign(houseRulesToCfg(UI.houseRules),
       { setup: "custom", opponent: "ai" }));
     const king = G.units.find(u => u.side === 0 && u.type === "king");
     const other = G.units.find(u => u.side === 0 && u.type !== "king");
     const kc = king.c, kr = king.r;
-    /* "Your King must start on the royal emblem in the back row." */
+    /* p.6: "Your King must start on the royal emblem in the back row." */
+    const onEmblem = kc === 4 && kr === H - 1;
     const pinned = !deployPlace(king, 0, H - 1) && king.c === kc && king.r === kr;
     const unswappable = !deployPlace(other, kc, kr);
-    /* The printed opening puts it on the centre of the back row. */
-    const onEmblem = kc === 4 && kr === H - 1;
-    return pinned && unswappable && onEmblem;
+    /* "...you may place your other figures on that row and the row in front." */
+    const zoneHeld = !deployPlace(other, 4, 3) && !deployPlace(other, 4, 0);
+    return onEmblem && pinned && unswappable && zoneHeld;
+  }],
+
+  ["the free-King house rule lets it move and be swapped with", () => {
+    UI.pendingOpponent = "ai";
+    UI.houseRules = Object.assign(defaultHouseRules(), { freeKing: true });
+    startGame(57, Object.assign(houseRulesToCfg(UI.houseRules),
+      { setup: "custom", opponent: "ai" }));
+    const king = G.units.find(u => u.side === 0 && u.type === "king");
+    const other = G.units.find(u => u.side === 0 && u.type !== "king");
+    const kingMoves = deployPlace(king, 0, H - 1) && king.c === 0 && king.r === H - 1;
+    const kc = king.c, kr = king.r, oc = other.c, or_ = other.r;
+    const kingSwaps = deployPlace(other, kc, kr) &&
+                      other.c === kc && other.r === kr && king.c === oc && king.r === or_;
+    return kingMoves && kingSwaps;
+  }],
+
+  ["as printed, a base carries its full count; the house rule relaxes it", () => {
+    const spec = basicSpec();
+    spec.infantry = { bases: spec.infantry.bases, figs: 3 };   /* 3 of a printed 4 */
+    const printed = validateArmy(spec, defaultHouseRules());
+    const relaxed = validateArmy(spec, Object.assign(defaultHouseRules(), { partialBases: true }));
+    return typeof printed === "string" && printed.length > 0 && relaxed === null;
   }],
 
   ["facing can be set freely while deploying, and costs nothing", () => {
