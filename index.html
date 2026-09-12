@@ -144,6 +144,7 @@ body::after {
 .disclose > summary::before { content: "+ "; color: var(--amber); }
 .disclose[open] > summary::before { content: "\2212 "; }
 .disclose > summary:hover, .disclose > summary:focus-visible { color: var(--text); }
+.fortune-note { margin: 5px 0 0; font-size: 12px; }
 
 /* ============================================================
    LAYOUT — board centre, status panel beside it, battle-plan
@@ -1003,7 +1004,7 @@ function newGame(seed, opts) {
        terminate, and is off (0) in human play. */
     cfg: { setup: (opts && opts.setup) || "basic", opponent: "ai",
            massiveInfantry: false, partialBases: false, anchorKing: true,
-           noPeasantDuel: true, roundCap: 0 },
+           noPeasantDuel: true, fortune: FORTUNE_EVEN, roundCap: 0 },
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* p.2: "There are two armies -- one gold, one silver." Gold is gold here.
        Silver is not: the CRT palette renders side 0 in phosphor green, and a
@@ -1019,7 +1020,14 @@ function newGame(seed, opts) {
     for (const side of [0, 1]) {
       const spec = (opts && opts.specs && opts.specs[side]) || botMuster(side, seed + side * 7919);
       G.players[side].spec = spec;
-      deployFromSpec(side, spec);
+      /* A human's line is laid by hand in the deploy phase and this is only
+         its starting shape, so it always gets the printed one. A bot's is
+         drawn from the library at its own skill. */
+      const op = G.players[side].isBot
+        ? pickOpening(G.players[side].skill, seed + side * 104729)
+        : OPENINGS[0];
+      G.players[side].opening = op.key;
+      deployFromSpec(side, spec, op);
     }
   } else {
     for (const side of [0, 1]) G.players[side].spec = basicSpec();
@@ -1141,15 +1149,71 @@ function diceFor(u) {
   return Math.min(per, MAX_DICE, u.figs * d.dicePerFig);
 }
 
-function rollDice(n) {
+/* FORTUNE. The die is printed 3 axes, 2 arrows, 1 PANIC, and at "Even" that
+   is exactly what is thrown -- down to the same single rint(6) per die, so
+   the default path is byte-identical to the game before fortune existed.
+   The other two settings reweight the AI's own rolls. Yours stay printed at
+   every setting.
+
+   Two weights, not one, and the second was not optional. Weighting PANIC
+   alone gives a badly lopsided lever, because what PANIC really costs is the
+   TOTAL panic that breaks a unit, and that scales on the power of the dice:
+   doubling the face rate from 16.7% to 30.6% makes an all-four-PANIC roll
+   eleven times likelier, while halving it only trims a number already near
+   zero. Measured over 300 games a side at equal skill, panic weight alone
+   moved the AI 48.7% -> 34.3% down and 48.7% -> 52.0% up. So fortune also
+   weights the attacker's OWN scoring face, which is the half a player would
+   actually call luck, and the two ends come out comparable.
+
+                panic   hit face   P(hit face)   P(PANIC)
+     Unlucky     2.2       0.7        33.3%        34.9%
+     Even        1         1          50.0%        16.7%    (the printed die)
+     Lucky       0.45      1.6        66.2%         6.2%
+
+   The AI is not told. Its planner reads DICE_DIST, which stays the exact
+   distribution of the printed die, so a lucky opponent plays the same game
+   and simply comes off better. That keeps DICE_DIST a load-time constant
+   rather than a function of settings, and it is why the lever is still a
+   little stronger downwards: an unlucky AI compounds bad dice with
+   expectations calibrated for fair ones. */
+const FORTUNE = [
+  { key: "unlucky", name: "Unlucky", panicWeight: 2.2,  hitWeight: 0.7 },
+  { key: "even",    name: "Even",    panicWeight: 1,    hitWeight: 1 },
+  { key: "lucky",   name: "Lucky",   panicWeight: 0.45, hitWeight: 1.6 },
+];
+const FORTUNE_EVEN = 1;
+
+/* The dial is the opponent's, so it only bites on a bot's own rolls. */
+function fortuneFor(side) {
+  if (!G || !G.cfg || side == null) return null;
+  const f = FORTUNE[G.cfg.fortune == null ? FORTUNE_EVEN : G.cfg.fortune];
+  if (!f || f.panicWeight === 1) return null;
+  return G.players[side] && G.players[side].isBot ? f : null;
+}
+
+function rollDice(n, side, hitFace) {
   /* Test seam. A total panic on a full base happens once in 1296
      attacks, so the cascade cannot be reached by simulation alone. */
   if (HARNESS.forceFaces) {
     const forced = HARNESS.forceFaces.splice(0, n);
     if (forced.length === n) return forced;
   }
+  const f = fortuneFor(side);
   const out = [];
-  for (let i = 0; i < n; i++) out.push(DIE_FACES[rint(6)]);
+  if (!f) {
+    for (let i = 0; i < n; i++) out.push(DIE_FACES[rint(6)]);
+    return out;
+  }
+  /* A Peasant scores with whichever symbol it rolled most of, so it has no
+     one face to favour: it gets the boost on both, which is the same tilt
+     spread evenly. */
+  const boost = t => hitFace == null ? f.hitWeight : (t === hitFace ? f.hitWeight : 1);
+  const wAxe = 3 * boost(AXE), wArrow = 2 * boost(ARROW), wPanic = f.panicWeight;
+  const total = wAxe + wArrow + wPanic;
+  for (let i = 0; i < n; i++) {
+    const r = rnd() * total;
+    out.push(r < wAxe ? AXE : r < wAxe + wArrow ? ARROW : PANIC);
+  }
   return out;
 }
 
@@ -1186,11 +1250,11 @@ function resolveAttack(P, grid, atk, def) {
     /* A Peasant's hitFace is null -- it scores with "whichever you rolled the
        most of" -- so the re-roll cannot test equality against a single face. */
     const isHit = f => ad.hitFace === null ? f !== PANIC : f === ad.hitFace;
-    const f1 = rollDice(1)[0];
+    const f1 = rollDice(1, atk.side, ad.hitFace)[0];
     res.faces.push(f1);
     if (f1 === PANIC) { res.panicSteps = 1; return res; }
     if (isHit(f1)) {
-      const f2 = rollDice(1)[0];
+      const f2 = rollDice(1, atk.side, ad.hitFace)[0];
       res.faces.push(f2);
       if (f2 === PANIC) { res.panicSteps = 1; return res; }
       const axes = res.faces.filter(f => f === AXE).length;
@@ -1199,7 +1263,7 @@ function resolveAttack(P, grid, atk, def) {
     }
   } else {
     const n = diceFor(atk);
-    res.faces = rollDice(n);
+    res.faces = rollDice(n, atk.side, ad.hitFace);
     const axes = res.faces.filter(f => f === AXE).length;
     const arrows = res.faces.filter(f => f === ARROW).length;
     const panics = res.faces.filter(f => f === PANIC).length;
@@ -2780,11 +2844,30 @@ const W_KINGLANE = 120;   /* an enemy rider has a clear run at my King    */
 const W_ARCHER = 6;       /* my archer has something in its block         */
 const W_SCREEN = 5;       /* my archer has a friendly directly ahead      */
 
+/* `sharp` is how hard the tier weights an opening by its grade. 0 is a
+   coin-toss across the whole library, weak shapes included; 5 all but
+   guarantees a sound one. It is the deployment half of cleverness, and it
+   matters: the opening is the one decision the search never revisits. */
 const SKILL = [
-  { name: "Squire",  beam: 1,  threat: false, kingLane: false, archer: false, noise: "top4" },
-  { name: "Knight",  beam: 6,  threat: true,  kingLane: true,  archer: true,  noise: "second" },
-  { name: "Marshal", beam: 14, threat: true,  kingLane: true,  archer: true,  noise: "none" },
+  { name: "Squire",  beam: 1,  threat: false, kingLane: false, archer: false, noise: "top4", sharp: 0 },
+  { name: "Knight",  beam: 6,  threat: true,  kingLane: true,  archer: true,  noise: "second", sharp: 2 },
+  { name: "Marshal", beam: 14, threat: true,  kingLane: true,  archer: true,  noise: "none", sharp: 5 },
 ];
+
+/* Deterministic from the seed, like botMuster, and drawn before a die is
+   ever thrown -- so it costs G.rng nothing and a game still replays. */
+function pickOpening(skill, pickSeed) {
+  const sharp = (SKILL[skill] || SKILL[1]).sharp;
+  const weights = OPENINGS.map(o => Math.pow(o.grade, sharp));
+  const total = weights.reduce((a, b) => a + b, 0);
+  const roll = mulberry32((pickSeed >>> 0) || 1)() * total;
+  let acc = 0;
+  for (let i = 0; i < OPENINGS.length; i++) {
+    acc += weights[i];
+    if (roll < acc) return OPENINGS[i];
+  }
+  return OPENINGS[0];
+}
 
 /* A light clone. JSON round-tripping G ~900 times per turn is far too slow;
    the search only needs the position. */
@@ -3108,22 +3191,81 @@ function unitsFromSpec(side, spec) {
    than filling the back row first: bows and horse behind the line, foot
    screening in front. Both rows fill outward from the centre, so a short
    muster still forms a line instead of hugging one edge. */
-const BACK_ROW_TYPES = ["archer", "knight"];
 const CENTRE_OUT = [4, 3, 5, 2, 6, 1, 7, 0, 8];
+const EDGE_IN    = [0, 8, 1, 7, 2, 6, 3, 5, 4];
+const LEFT_HALF  = [4, 3, 2, 1, 0, 5, 6, 7, 8];
+const RIGHT_HALF = [4, 5, 6, 7, 8, 3, 2, 1, 0];
+const FOOT = ["infantry", "heavy", "peasant", "mercenary"];
+const MISSILE_HORSE = ["archer", "knight"];
 
-function placeArmy(side, list) {
+/* ============================================================
+   OPENINGS — a library of shapes for the two deployment ranks.
+
+   One shape per entry, described as column orders and which
+   types prefer which rank; the placer fills a preferred rank
+   and overflows to the other, so an opening works whatever the
+   muster turned out to be. `grade` is soundness, 1 to 3, and it
+   is what separates a Squire's opening from a Marshal's -- see
+   pickOpening(). Nothing here reads the enemy: both plans are
+   laid blind, which is the rulebook's own arrangement.
+   ============================================================ */
+const OPENINGS = [
+  { key: "line", grade: 3, name: "The printed line",
+    note: "Bows and horse behind, foot screening in front — the shape of the printed army.",
+    back: MISSILE_HORSE, backCols: CENTRE_OUT, frontCols: CENTRE_OUT, kingCol: 4 },
+
+  { key: "screen", grade: 3, name: "Archer screen",
+    note: "Every bow directly behind a body, shooting over its own front rank.",
+    back: ["archer"], backCols: CENTRE_OUT, frontCols: CENTRE_OUT, kingCol: 4 },
+
+  { key: "refusedLeft", grade: 2, name: "Refused left",
+    note: "The whole line shifted right, leaving a flank to be turned rather than held.",
+    back: MISSILE_HORSE, backCols: RIGHT_HALF, frontCols: RIGHT_HALF, kingCol: 6 },
+
+  { key: "refusedRight", grade: 2, name: "Refused right",
+    note: "The mirror: weight on the left, the right flank given away on purpose.",
+    back: MISSILE_HORSE, backCols: LEFT_HALF, frontCols: LEFT_HALF, kingCol: 2 },
+
+  { key: "vanguard", grade: 2, name: "Vanguard",
+    note: "Horse alone in front, the host massed behind it. Contact comes early, and on your terms.",
+    back: ["archer"].concat(FOOT), front: ["knight"],
+    backCols: CENTRE_OUT, frontCols: CENTRE_OUT, kingCol: 4 },
+
+  { key: "forward", grade: 2, name: "Everything forward",
+    note: "One rank, as far up as the rules allow, and nothing held back.",
+    back: [], backCols: CENTRE_OUT, frontCols: CENTRE_OUT, kingCol: 4 },
+
+  { key: "wide", grade: 1, name: "Wide wings",
+    note: "Filled from the edges in. Threatens both flanks and holds neither.",
+    back: MISSILE_HORSE, backCols: EDGE_IN, frontCols: EDGE_IN, kingCol: 4 },
+
+  { key: "deep", grade: 1, name: "Held back",
+    note: "The back rank first. Slow to arrive, and the front rank goes hungry.",
+    back: MISSILE_HORSE.concat(FOOT), backCols: CENTRE_OUT, frontCols: CENTRE_OUT, kingCol: 4 },
+];
+
+function openingByKey(key) {
+  return OPENINGS.find(o => o.key === key) || OPENINGS[0];
+}
+
+/* The King takes its square first -- the printed emblem, or the opening's
+   own preference when the free-King house rule is on -- and everything else
+   fills its preferred rank, overflowing to the other. */
+function placeArmy(side, list, opening) {
+  const op = opening || OPENINGS[0];
   const back = side === 0 ? H - 1 : 0;
   const front = side === 0 ? H - 2 : 1;
   const king = list.find(u => u.type === "king");
   const rest = list.filter(u => u !== king);
 
-  const behind = rest.filter(u => BACK_ROW_TYPES.includes(u.type));
-  const ahead = rest.filter(u => !BACK_ROW_TYPES.includes(u.type));
+  const anchored = !(G && G.cfg) || G.cfg.anchorKing !== false;
+  const kingCol = anchored ? 4 : (op.kingCol == null ? 4 : op.kingCol);
 
-  /* The King holds the centre of the back row; everything else fills the
-     free columns of its preferred row, overflowing to the other. */
-  const free = { [back]: CENTRE_OUT.filter(c => c !== 4), [front]: CENTRE_OUT.slice() };
-  const out = [{ unit: king, c: 4, r: back }];
+  const free = {
+    [back]: (op.backCols || CENTRE_OUT).filter(c => c !== kingCol),
+    [front]: (op.frontCols || CENTRE_OUT).slice(),
+  };
+  const out = king ? [{ unit: king, c: kingCol, r: back }] : [];
 
   const take = (u, first, second) => {
     const row = free[first].length ? first : second;
@@ -3132,14 +3274,21 @@ function placeArmy(side, list) {
     out.push({ unit: u, c, r: row });
     return true;
   };
-  for (const u of behind) take(u, back, front);
-  for (const u of ahead) take(u, front, back);
+  /* Rank preference: `front` wins over `back`, and also takes the front
+     rank's best columns before anything else does -- which is what makes a
+     vanguard a vanguard rather than the same line with the bows moved. */
+  const leads = op.front || [];
+  const wantsBack = u => leads.includes(u.type) ? false : (op.back || []).includes(u.type);
+  const ahead = rest.filter(u => !wantsBack(u));
+  for (const u of rest.filter(wantsBack)) take(u, back, front);
+  for (const u of ahead.filter(u => leads.includes(u.type))) take(u, front, back);
+  for (const u of ahead.filter(u => !leads.includes(u.type))) take(u, front, back);
   return out;
 }
 
-function deployFromSpec(side, spec) {
+function deployFromSpec(side, spec, opening) {
   const face = side === 0 ? N : S;
-  for (const p of placeArmy(side, unitsFromSpec(side, spec))) {
+  for (const p of placeArmy(side, unitsFromSpec(side, spec), opening)) {
     G.units.push(makeUnit(side, p.unit.type, p.unit.figs, p.c, p.r, face));
   }
 }
@@ -3220,6 +3369,7 @@ function musterConfirm() {
   UI.musterSpecs = null;
   clearSave();
   startGame(undefined, Object.assign(houseRulesToCfg(UI.houseRules || defaultHouseRules()),
+    fortuneToCfg(UI.pendingFortune),
     { setup: "custom", opponent: UI.pendingOpponent || "ai", specs }));
 }
 
@@ -3519,6 +3669,12 @@ function houseRulesToCfg(hr) {
            roundCap: hr.useRoundCap ? 60 : 0 };
 }
 
+/* Fortune is a difficulty knob rather than a rule override, so it rides in
+   beside the skill rather than in the house-rule list. */
+function fortuneToCfg(idx) {
+  return { fortune: idx == null ? FORTUNE_EVEN : +idx };
+}
+
 /* ============================================================
    MENU — the one place a game is configured. Difficulty lives
    here because the AI had no selector at all until now.
@@ -3531,6 +3687,7 @@ function menuBegin() {
   UI.menuOpen = false;
   UI.pendingOpponent = m.opponent;
   UI.pendingSkill = m.skill;
+  UI.pendingFortune = m.fortune;
   UI.houseRules = Object.assign(defaultHouseRules(), m.house);
   UI.musterSpecs = null;
   openMuster(0);
@@ -3547,6 +3704,10 @@ function renderMenu() {
       ${esc(label)}${sub ? `<span class="dim"> ${esc(sub)}</span>` : ""}</span>`;
 
   const skills = SKILL.map((sk, i) => pick("skill", String(i), sk.name)).join("");
+  /* Whose dice it tilts is the whole question, so the label says so. */
+  const fortunes = FORTUNE.map((f, i) =>
+    pick("fortune", String(i), f.name, i === FORTUNE_EVEN ? "the printed die" : "")).join("")
+    + `<p class="dim fortune-note">Tilts the opponent's dice toward hitting or toward PANIC. Yours stay the printed die.</p>`;
   const house = HOUSE_RULES.map(h => `
     <li>
       <span class="opt ${m.house[h.key] ? "on" : ""}" data-act="menuHouse" data-key="${h.key}"
@@ -3560,6 +3721,7 @@ function renderMenu() {
     <dl class="menu-rows">
       <dt>Opponent</dt><dd>${pick("opponent", "ai", "Versus AI")}${pick("opponent", "hotseat", "Hot-seat", "two players, one screen")}</dd>
       ${m.opponent === "ai" ? `<dt>Difficulty</dt><dd>${skills}</dd>` : ""}
+      ${m.opponent === "ai" ? `<dt>Fortune</dt><dd>${fortunes}</dd>` : ""}
     </dl>
     <details class="disclose"${UI.menuAdvanced ? " open" : ""}>
       <summary data-act="menuAdvanced">House rules
@@ -3629,7 +3791,9 @@ function renderHelp() {
     <p><b>Your battle plan.</b> A customised army is placed by you, in secret, before a shot is
        fired: your King holds the royal emblem in the centre of the back row, and every other
        base goes anywhere on that rank or the one in front, facing wherever you like. Pick a base, then a
-       square to move it, or another base to swap them. Bunch in the middle, or send the riders
+       square to move it, or another base to swap them. <b>Re-form the line</b> steps through
+       the openings the AI draws from &mdash; eight shapes, named as they land &mdash; so you can
+       start from one and adjust. Bunch in the middle, or send the riders
        wide to turn a flank &mdash; the rulebook's own words are &ldquo;You&rsquo;re in
        command!&rdquo; Leaving the muster and the line exactly as they stand gives you the
        printed Basic Game, square for square.</p>
@@ -4015,19 +4179,22 @@ function deployFace(unit, face) {
   return true;
 }
 
+/* Steps through the same library the AI draws from, so the shapes are
+   learnable by using them rather than by being described. Each press is the
+   next opening, named in the field report; adjust from there by hand. */
 function deployAuto() {
   const side = G.deploySide;
   const mine = G.units.filter(u => u.side === side);
-  const spec = {};
-  for (const t of MUSTER_ORDER) spec[t] = { bases: 0, figs: 0 };
+  UI.openingIdx = UI.openingIdx == null ? 0 : (UI.openingIdx + 1) % OPENINGS.length;
+  const op = OPENINGS[UI.openingIdx];
   const list = mine.map(u => ({ type: u.type, figs: u.figs }));
-  const placed = placeArmy(side, list);
-  placed.forEach((p, i) => {
+  placeArmy(side, list, op).forEach(p => {
     const u = mine.find(x => x.type === p.unit.type && x.figs === p.unit.figs && !x._pl);
     if (u) { u.c = p.c; u.r = p.r; u._pl = true; }
   });
   for (const u of mine) delete u._pl;
-  log("The line re-forms.");
+  G.openingShown = op.key;
+  log(`The line re-forms: ${op.name}.`);
   updateAll();
 }
 
@@ -4796,6 +4963,63 @@ const RULE_TESTS = [
     return east && u.face === WEST && G.actionsLeft === before;
   }],
 
+  ["every opening places every base, in its own two ranks, no two on a square", () => {
+    UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
+    startGame(61, Object.assign(houseRulesToCfg(UI.houseRules),
+      { setup: "custom", opponent: "ai" }));
+    for (const op of OPENINGS) {
+      for (const seed of [1, 2, 3, 4]) {
+        for (const side of [0, 1]) {
+          const list = unitsFromSpec(side, botMuster(side, seed));
+          const placed = placeArmy(side, list, op);
+          if (placed.length !== list.length) return false;
+          const rows = deployRows(side);
+          const seen = new Set();
+          for (const pl of placed) {
+            if (!rows.includes(pl.r) || !inBoard(pl.c, pl.r)) return false;
+            const k = idx(pl.c, pl.r);
+            if (seen.has(k)) return false;
+            seen.add(k);
+          }
+        }
+      }
+    }
+    return true;
+  }],
+
+  ["cleverness weights the opening: a Marshal all but never draws a weak one", () => {
+    const rate = skill => {
+      let weak = 0;
+      for (let i = 1; i <= 2000; i++) if (pickOpening(skill, i * 2654435761).grade === 1) weak++;
+      return weak / 2000;
+    };
+    const squire = rate(0), marshal = rate(2);
+    /* Two weak shapes of eight, so a coin-toss lands on one a quarter of the
+       time; sharpening has to bring that down by an order of magnitude. */
+    return squire > 0.18 && squire < 0.32 && marshal < 0.02 && rate(1) < squire;
+  }],
+
+  ["fortune leaves the printed die alone at Even, and never touches a human", () => {
+    startGame(62, { setup: "basic", opponent: "ai" });
+    G.players[0].isBot = false; G.players[1].isBot = true;
+    const count = (fortune, side) => {
+      G.cfg.fortune = fortune;
+      const c = { [AXE]: 0, [ARROW]: 0, [PANIC]: 0 };
+      for (let i = 0; i < 6000; i++) for (const f of rollDice(4, side, AXE)) c[f]++;
+      const n = c[AXE] + c[ARROW] + c[PANIC];
+      return { axe: c[AXE] / n, panic: c[PANIC] / n };
+    };
+    const near = (a, b) => Math.abs(a - b) < 0.02;
+    const even = count(FORTUNE_EVEN, 1);
+    const lucky = count(2, 1), unlucky = count(0, 1);
+    const humanUnderLucky = count(2, 0);
+    G.cfg.fortune = FORTUNE_EVEN;
+    return near(even.axe, 0.5) && near(even.panic, 1 / 6) &&
+           near(humanUnderLucky.axe, 0.5) && near(humanUnderLucky.panic, 1 / 6) &&
+           lucky.axe > 0.62 && lucky.panic < 0.09 &&
+           unlucky.axe < 0.38 && unlucky.panic > 0.30;
+  }],
+
   ["taking the field ends deployment and starts play", () => {
     UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
     startGame(59, { setup: "custom", opponent: "ai" });
@@ -4885,9 +5109,10 @@ const UI = {
   musterOpen: false, musterSide: 0, muster: null, musterSpecs: null, pendingOpponent: "ai",
   muted: false, speed: 1, rects: null, rotLock: null, rotLockTimer: null, aim: null, preAttack: null,
   menuOpen: false, menuAdvanced: false, helpOpen: false, coach: null,
+  pendingFortune: null, openingIdx: null,
   bloom: false, lastSel: null, entering: false, lastActions: null, lastTurnKey: null,
   pendingSkill: 1, houseRules: null,
-  menu: { opponent: "ai", skill: "1", house: {} },
+  menu: { opponent: "ai", skill: "1", fortune: String(FORTUNE_EVEN), house: {} },
 };
 
 const RAIL = [
@@ -4907,6 +5132,7 @@ window.__PH = {
   validateArmy, basicSpec, botMuster, specBases, specFigures, unitsFromSpec, MUSTER_ORDER,
   botChooseTurn, evaluate, expectedAttack, SKILL, assertInvariants, checkVictory,
   sfx, cycleSpeed, toggleMute, SPEED_FACTOR, perBaseOf, HOUSE_RULES, COACH,
+  OPENINGS, pickOpening, placeArmy, FORTUNE, fortuneFor, rollDice,
   openMenu, toggleHelp, runShot, SHOTS,
   deployPlace, deployFace, deployAuto, deployReady, inDeployZone, deployRows,
   tryAction, activateSquare, get UI() { return UI; },

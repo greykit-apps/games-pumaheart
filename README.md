@@ -76,6 +76,13 @@ Win by killing the enemy King, or by leaving it standing alone on the field.
 - **Three AI difficulties.** Squire plays greedily and is blind to threats; Knight looks a turn
   ahead; Marshal searches wider. Measured over 150 games a side: Marshal beats Squire 93%,
   Knight beats Squire 90%, Marshal beats Knight 61%.
+- **An opening library of eight shapes** — the printed line, an archer screen, a refused flank
+  either way, a vanguard, everything forward, wide wings, held back. The AI draws from it by
+  skill: a Squire lands on a weak shape about a quarter of the time, a Marshal under 1 in 300.
+  **Re-form the line** in the deploy screen steps you through the same eight.
+- **Fortune**, a second difficulty dial beside the first. It tilts the opponent's dice toward
+  hitting or toward PANIC; yours stay the printed die at every setting. At equal skill over 300
+  games a side the AI wins 20% Unlucky, 49% Even, 70% Lucky.
 - **Hot-seat**, with a handover curtain standing in for the rulebook's upright game box.
 - **Mouse-first**, with full keyboard play alongside it, a screen-reader commentary separate
   from the field report, and a reduced-motion path that skips animation entirely rather than
