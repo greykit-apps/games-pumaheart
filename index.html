@@ -211,6 +211,40 @@ body::after {
 .u[data-face="3"]::after { left: -4px; top: 50%; margin-top: -4px;
   border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-right: 5px solid currentColor; }
 
+/* Muster screen */
+#muster {
+  position: fixed; inset: 0; z-index: 8100; display: flex;
+  align-items: center; justify-content: center; background: rgba(10,10,10,0.94);
+  overflow: auto; padding: 16px;
+}
+#muster[hidden] { display: none !important; }
+.muster-card { background: var(--bg); min-width: 340px; max-width: 560px; }
+table.muster { border-collapse: collapse; width: 100%; margin: 10px 0; }
+table.muster th, table.muster td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--panel-2); }
+table.muster thead th { color: var(--amber); font-weight: normal; font-size: 11px;
+  letter-spacing: 0.1em; text-transform: uppercase; }
+table.muster tbody th { font-weight: normal; }
+table.muster .cap { color: var(--text-dim); font-size: 11px; }
+table.muster .pool { color: var(--text-dim); text-align: right; }
+table.muster tr.bad .pool, table.muster tr.bad th { color: var(--red); }
+table.muster tr.locked { color: var(--text-dim); }
+td.step { white-space: nowrap; }
+td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
+.sbtn {
+  display: inline-block; min-width: 20px; text-align: center; cursor: pointer;
+  border: 1px solid var(--border); color: var(--amber); line-height: 18px;
+}
+.sbtn:hover { border-color: var(--amber-dim); }
+.tally { margin: 6px 0 0; }
+.tally .ok { color: var(--green); }
+.tally .bad { color: var(--red); }
+.why { margin: 4px 0 12px; color: var(--amber); min-height: 1.4em; }
+.muster-actions { display: flex; gap: 10px; }
+.btn[disabled] { color: var(--text-dim); border-color: var(--panel-2); cursor: not-allowed; }
+.hud-new { display: flex; gap: 8px; margin-left: auto; }
+.hud-new .cmd { color: var(--text-dim); cursor: pointer; padding: 2px 6px; border: 1px solid var(--border); }
+.hud-new .cmd:hover { color: var(--text); border-color: var(--amber-dim); }
+
 /* Hot-seat handover curtain */
 #curtain {
   position: fixed; inset: 0; z-index: 8000; display: flex;
@@ -276,6 +310,11 @@ body::after {
   <header id="hud">
     <span class="brand">Puma<b>Heart</b></span>
     <span id="hud-state"></span>
+    <span class="hud-new">
+      <span class="cmd" data-act="newBasic" role="button" tabindex="0">Basic</span>
+      <span class="cmd" data-act="newCustom" role="button" tabindex="0">Customised</span>
+      <span class="cmd" data-act="newHotseat" role="button" tabindex="0">Hot-seat</span>
+    </span>
     <span id="hud-turn" class="sr-only" aria-live="polite"></span>
   </header>
 
@@ -301,6 +340,7 @@ body::after {
   </nav>
 </div>
 <div id="curtain" hidden></div>
+<div id="muster" hidden></div>
 <div id="announcements" class="sr-only" aria-live="polite"></div>
 
 <script>
@@ -497,13 +537,13 @@ function deployBasic(side) {
   for (const c of [2, 3, 4, 5, 6]) G.units.push(makeUnit(side, "infantry", 4, c, front, face));
 }
 
-function newGame(seed) {
+function newGame(seed, opts) {
   G = {
     v: 1, seed: seed, rng: seed,
     /* roundCap is NOT a printed rule. It exists only so headless sims
        terminate, and is off (0) in human play. */
-    cfg: { setup: "basic", opponent: "ai", massiveInfantry: false,
-           partialBases: true, roundCap: 0 },
+    cfg: { setup: (opts && opts.setup) || "basic", opponent: "ai",
+           massiveInfantry: false, partialBases: true, roundCap: 0 },
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* Pride names are placeholders for the author's own wording. */
     players: [
@@ -512,8 +552,17 @@ function newGame(seed) {
     ],
     units: [], botPlan: [], dice: null, log: [], gameOver: false, result: null, nextUid: 1,
   };
-  deployBasic(0);
-  deployBasic(1);
+  if (G.cfg.setup === "custom") {
+    for (const side of [0, 1]) {
+      const spec = (opts && opts.specs && opts.specs[side]) || botMuster(side, seed + side * 7919);
+      G.players[side].spec = spec;
+      deployFromSpec(side, spec);
+    }
+  } else {
+    for (const side of [0, 1]) G.players[side].spec = basicSpec();
+    deployBasic(0);
+    deployBasic(1);
+  }
   /* p.4: "Each player rolls all 4 Combat dice. The player who rolls the
      most Battle-axes will go first." Ties are not addressed by the rules;
      we re-roll (plan section 6, gap 3). */
@@ -680,9 +729,14 @@ function resolveAttack(P, grid, atk, def) {
     }
   }
 
-  /* "If it's not a total panic, disregard the PANICs you rolled."
-     A total panic discards the hits with it. */
-  if (res.panicSteps) { res.hits = 0; return res; }
+  /* "If it's not a total panic, disregard the PANICs you rolled." A TOTAL
+     panic takes the hits with it -- which is vacuous for most units, since
+     every die must read PANIC for it to happen, so there are no hits to lose.
+     Peasants are the exception: they panic per die and KEEP their hits.
+     Rulebook p.6, verbatim: "You roll 4 dice and they come up 2 Battle-axes,
+     1 Arrow and 1 PANIC. You choose the Battle-axes (= 2 hits) AND you
+     observe the PANIC." */
+  if (res.panicSteps && !ad.panicPerDie) { res.hits = 0; return res; }
 
   /* "remove 1 figure ... for every Battle-ax"; a Knight, King or Heavy
      Infantry "must be hit twice in the same Attack to be eliminated". */
@@ -1362,6 +1416,7 @@ function updateAll() {
   renderHUD();
   renderStatus();
   renderCurtain();
+  renderMuster();
   renderLog();
   restoreFocus();
 }
@@ -1441,7 +1496,7 @@ function selUnit() {
   return u && u.alive ? u : null;
 }
 function myTurn() {
-  return !G.gameOver && isHuman(G.turn) && !UI.animating && !UI.curtain;
+  return !G.gameOver && isHuman(G.turn) && !UI.animating && !UI.curtain && !UI.musterOpen;
 }
 
 function selectUnit(uid) {
@@ -1560,13 +1615,25 @@ const ACTS = {
   undo: doUndo,
   endTurn: passTurn,
   help: () => toggleHelp(),
-  ready: () => { UI.curtain = false; updateAll(); advance(); },
+  ready: () => {
+    UI.curtain = false;
+    if (UI.curtainThen === "muster") { UI.curtainThen = null; updateAll(); return; }
+    updateAll();
+    advance();
+  },
+  musterBases: el => musterAdjust(el.dataset.type, "bases", +el.dataset.delta),
+  musterFigs: el => musterAdjust(el.dataset.type, "figs", +el.dataset.delta),
+  musterPreset: () => { UI.muster = basicSpec(); updateAll(); },
+  musterConfirm: musterConfirm,
+  newBasic: () => { clearSave(); UI.musterOpen = false; startGame(undefined, { setup: "basic", opponent: "ai" }); },
+  newCustom: () => { clearSave(); UI.pendingOpponent = "ai"; UI.musterSpecs = null; openMuster(0); },
+  newHotseat: () => { clearSave(); UI.pendingOpponent = "hotseat"; UI.musterSpecs = null; openMuster(0); },
   newGame: () => { clearSave(); startGame(); },
 };
 
-function dispatchAct(name) {
+function dispatchAct(name, el) {
   const fn = ACTS[name];
-  if (fn) fn();
+  if (fn) fn(el);
 }
 
 const KEYS = {
@@ -1590,7 +1657,7 @@ function setupInput() {
      their buttons at all -- they look inert by both mouse and keyboard. */
   document.addEventListener("click", ev => {
     const act = ev.target.closest("[data-act]");
-    if (act) { dispatchAct(act.dataset.act); return; }
+    if (act) { dispatchAct(act.dataset.act, act); return; }
     const cell = ev.target.closest(".sq");
     if (cell) {
       UI.cur = idx(+cell.dataset.c, +cell.dataset.r);
@@ -1613,7 +1680,7 @@ function setupInput() {
          the keyboard. */
       const focused = document.activeElement;
       const act = focused && focused.closest && focused.closest("[data-act]");
-      if (act) { ev.preventDefault(); dispatchAct(act.dataset.act); return; }
+      if (act) { ev.preventDefault(); dispatchAct(act.dataset.act, act); return; }
       if (inGrid && UI.cur != null) {
         ev.preventDefault();
         activateSquare(UI.cur % W, Math.floor(UI.cur / W));
@@ -1631,7 +1698,7 @@ function toggleHelp() {
 }
 
 function startGame(seed, opts) {
-  newGame(seed == null ? Math.floor(Math.random() * 1e9) : seed);
+  newGame(seed == null ? Math.floor(Math.random() * 1e9) : seed, opts);
   Object.assign(G.cfg, opts || {});
   if (G.cfg.opponent === "hotseat") G.players[1].isBot = false;
   UI.sel = null; UI.undo = []; UI.cur = idx(4, H - 1);
@@ -1911,6 +1978,250 @@ function botChooseTurn(P, side, skillIx) {
 }
 
 /* ============================================================
+   CUSTOMISED MUSTER (rulebook p.6)
+   "Both players start with 10 bases on the board." There is no
+   points system: the constraints are the physical components --
+   how many figures you own, how many fit on a base, and how
+   many bases of each special you are allowed.
+
+     Heavy Infantry - 1 or 2 bases: put 1 or 2 on a base
+     Peasants       - up to 4 bases: put up to 4 on a base
+     Mercenaries    - 1 base: put 2 on a base
+
+   Which basic bases you drop to make room is NOT stated
+   anywhere, so the figure pool is left to do the work.
+   ============================================================ */
+
+const MUSTER_ORDER = ["knight", "archer", "infantry", "heavy", "peasant", "mercenary"];
+
+/* An army spec is { type: { bases, figs } }. The King is implicit: exactly
+   one base of one figure, mandatory, and never in the spec. */
+function basicSpec() {
+  return { knight: { bases: 2, figs: 2 }, archer: { bases: 2, figs: 4 },
+           infantry: { bases: 5, figs: 4 }, heavy: { bases: 0, figs: 0 },
+           peasant: { bases: 0, figs: 0 }, mercenary: { bases: 0, figs: 0 } };
+}
+
+function specBases(spec) {
+  return 1 + MUSTER_ORDER.reduce((n, t) => n + (spec[t] ? spec[t].bases : 0), 0);
+}
+function specFigures(spec) {
+  return 1 + MUSTER_ORDER.reduce((n, t) => n + (spec[t] ? spec[t].bases * spec[t].figs : 0), 0);
+}
+
+/* Returns null when legal, otherwise a sentence naming what is wrong. The
+   UI shows that sentence rather than greying a button with no explanation. */
+function validateArmy(spec, cfg) {
+  const partial = !cfg || cfg.partialBases !== false;
+  for (const t of MUSTER_ORDER) {
+    const e = spec[t] || { bases: 0, figs: 0 };
+    const d = UNIT_DEFS[t];
+    if (e.bases < 0 || e.figs < 0) return `${d.name}: negative count.`;
+    if (e.bases > 0 && e.figs < 1) return `${d.name}: a base cannot be empty.`;
+    if (e.figs > d.perBase) return `${d.name}: only ${d.perBase} fit on a base.`;
+    if (e.bases > 0 && !partial && e.figs !== d.perBase && t !== "heavy" && t !== "peasant") {
+      return `${d.name}: bases must be filled to ${d.perBase}.`;
+    }
+    const used = e.bases * e.figs;
+    if (used > d.perPlayer) {
+      return `${d.name}: you own ${d.perPlayer}, this uses ${used}.`;
+    }
+    const capBases = CUSTOM_BASE_CAPS[t];
+    if (capBases !== undefined && e.bases > capBases) {
+      return `${d.name}: the muster allows ${capBases} ${capBases === 1 ? "base" : "bases"}.`;
+    }
+  }
+  const n = specBases(spec);
+  if (n !== BASES_TOTAL) {
+    return n < BASES_TOTAL
+      ? `${BASES_TOTAL - n} ${BASES_TOTAL - n === 1 ? "base" : "bases"} still to fill.`
+      : `${n - BASES_TOTAL} ${n - BASES_TOTAL === 1 ? "base" : "bases"} too many.`;
+  }
+  return null;
+}
+
+/* Build the actual units from a spec, ordered so the King lands centre-back
+   and the rest fill outward -- the printed basic arrangement generalised. */
+function unitsFromSpec(side, spec) {
+  const out = [{ type: "king", figs: 1 }];
+  for (const t of MUSTER_ORDER) {
+    const e = spec[t] || { bases: 0, figs: 0 };
+    for (let i = 0; i < e.bases; i++) out.push({ type: t, figs: e.figs });
+  }
+  return out;
+}
+
+/* p.6: "Your King must start on the royal emblem in the back row, and you
+   may place your other figures on that row and the row in front of it."
+
+   The default formation follows the shape of the printed basic army rather
+   than filling the back row first: bows and horse behind the line, foot
+   screening in front. Both rows fill outward from the centre, so a short
+   muster still forms a line instead of hugging one edge. */
+const BACK_ROW_TYPES = ["archer", "knight"];
+const CENTRE_OUT = [4, 3, 5, 2, 6, 1, 7, 0, 8];
+
+function placeArmy(side, list) {
+  const back = side === 0 ? H - 1 : 0;
+  const front = side === 0 ? H - 2 : 1;
+  const king = list.find(u => u.type === "king");
+  const rest = list.filter(u => u !== king);
+
+  const behind = rest.filter(u => BACK_ROW_TYPES.includes(u.type));
+  const ahead = rest.filter(u => !BACK_ROW_TYPES.includes(u.type));
+
+  /* The King holds the centre of the back row; everything else fills the
+     free columns of its preferred row, overflowing to the other. */
+  const free = { [back]: CENTRE_OUT.filter(c => c !== 4), [front]: CENTRE_OUT.slice() };
+  const out = [{ unit: king, c: 4, r: back }];
+
+  const take = (u, first, second) => {
+    const row = free[first].length ? first : second;
+    const c = free[row].shift();
+    if (c === undefined) return false;
+    out.push({ unit: u, c, r: row });
+    return true;
+  };
+  for (const u of behind) take(u, back, front);
+  for (const u of ahead) take(u, front, back);
+  return out;
+}
+
+function deployFromSpec(side, spec) {
+  const face = side === 0 ? N : S;
+  for (const p of placeArmy(side, unitsFromSpec(side, spec))) {
+    G.units.push(makeUnit(side, p.unit.type, p.unit.figs, p.c, p.r, face));
+  }
+}
+
+/* The bot's muster. Deterministic from the seed so a game replays, and it
+   never produces an illegal army -- validateArmy() gates every candidate. */
+function botMuster(side, pickSeed) {
+  const candidates = [
+    /* Mixed host: the printed basics stiffened with a Heavy Infantry pair. */
+    { knight: { bases: 2, figs: 2 }, archer: { bases: 2, figs: 4 },
+      infantry: { bases: 3, figs: 4 }, heavy: { bases: 1, figs: 2 },
+      peasant: { bases: 1, figs: 4 }, mercenary: { bases: 0, figs: 0 } },
+    /* Shield line: both Heavy bases, bows behind. */
+    { knight: { bases: 1, figs: 2 }, archer: { bases: 2, figs: 4 },
+      infantry: { bases: 3, figs: 4 }, heavy: { bases: 2, figs: 1 },
+      peasant: { bases: 1, figs: 4 }, mercenary: { bases: 0, figs: 0 } },
+    /* Free company: mercenaries and a screen of peasants. */
+    { knight: { bases: 2, figs: 2 }, archer: { bases: 1, figs: 4 },
+      infantry: { bases: 3, figs: 4 }, heavy: { bases: 0, figs: 0 },
+      peasant: { bases: 2, figs: 2 }, mercenary: { bases: 1, figs: 2 } },
+    /* The printed basic army, unchanged. */
+    basicSpec(),
+  ];
+  const legal = candidates.filter(c => validateArmy(c, G.cfg) === null);
+  const pool = legal.length ? legal : [basicSpec()];
+  return pool[(pickSeed >>> 0) % pool.length];
+}
+
+/* ============================================================
+   MUSTER SCREEN
+   Renders itself from UNIT_DEFS and CUSTOM_BASE_CAPS, so
+   changing a printed number changes the screen with no edit
+   here. The confirm button is never silently dead: when the
+   muster is illegal it shows the validator's own sentence.
+   ============================================================ */
+
+function openMuster(side) {
+  UI.musterOpen = true;
+  UI.musterSide = side;
+  UI.muster = basicSpec();
+  UI.curtain = false;
+  updateAll();
+}
+
+function musterAdjust(type, field, delta) {
+  const e = UI.muster[type];
+  const d = UNIT_DEFS[type];
+  if (field === "bases") {
+    e.bases = Math.max(0, Math.min(BASES_TOTAL - 1, e.bases + delta));
+    if (e.bases > 0 && e.figs < 1) e.figs = Math.min(d.perBase, d.perPlayer);
+    if (e.bases === 0) e.figs = 0;
+  } else {
+    e.figs = Math.max(0, Math.min(d.perBase, e.figs + delta));
+    if (e.figs > 0 && e.bases < 1) e.bases = 1;
+  }
+  updateAll();
+}
+
+function musterConfirm() {
+  if (validateArmy(UI.muster, { partialBases: true })) return;
+  UI.musterSpecs = UI.musterSpecs || {};
+  UI.musterSpecs[UI.musterSide] = JSON.parse(JSON.stringify(UI.muster));
+
+  /* Hot-seat: the second player musters in secret behind the curtain, which
+     is the digital stand-in for the rulebook's upright game box. */
+  const other = 1 - UI.musterSide;
+  if (UI.pendingOpponent === "hotseat" && !UI.musterSpecs[other]) {
+    UI.musterSide = other;
+    UI.muster = basicSpec();
+    UI.curtain = true;
+    UI.curtainThen = "muster";
+    updateAll();
+    return;
+  }
+
+  const specs = { 0: UI.musterSpecs[0], 1: UI.musterSpecs[1] || null };
+  UI.musterOpen = false;
+  UI.musterSpecs = null;
+  startGame(undefined, { setup: "custom", opponent: UI.pendingOpponent || "ai", specs });
+}
+
+function renderMuster() {
+  const el = document.getElementById("muster");
+  if (!UI.musterOpen || UI.curtain) { el.hidden = true; return; }
+  el.hidden = false;
+
+  const spec = UI.muster;
+  const rows = MUSTER_ORDER.map(t => {
+    const d = UNIT_DEFS[t], e = spec[t];
+    const used = e.bases * e.figs;
+    const cap = CUSTOM_BASE_CAPS[t];
+    const over = used > d.perPlayer || e.figs > d.perBase || (cap !== undefined && e.bases > cap);
+    return `<tr class="${over ? "bad" : ""}">
+      <th scope="row">${esc(d.name)}${cap !== undefined ? `<span class="cap"> max ${cap} base${cap === 1 ? "" : "s"}</span>` : ""}</th>
+      <td class="step">
+        <span class="sbtn" data-act="musterBases" data-type="${t}" data-delta="-1" role="button" tabindex="0" aria-label="One fewer ${esc(d.name)} base">&minus;</span>
+        <b aria-label="${e.bases} ${esc(d.name)} bases">${e.bases}</b>
+        <span class="sbtn" data-act="musterBases" data-type="${t}" data-delta="1" role="button" tabindex="0" aria-label="One more ${esc(d.name)} base">+</span>
+      </td>
+      <td class="step">
+        <span class="sbtn" data-act="musterFigs" data-type="${t}" data-delta="-1" role="button" tabindex="0" aria-label="One fewer ${esc(d.name)} per base">&minus;</span>
+        <b aria-label="${e.figs} per base">${e.figs}</b>
+        <span class="sbtn" data-act="musterFigs" data-type="${t}" data-delta="1" role="button" tabindex="0" aria-label="One more ${esc(d.name)} per base">+</span>
+      </td>
+      <td class="pool">${used} of ${d.perPlayer}</td>
+    </tr>`;
+  }).join("");
+
+  const why = validateArmy(spec, { partialBases: true });
+  const n = specBases(spec);
+
+  el.innerHTML = `<div class="box muster-card">
+    <span class="box-label">Muster &mdash; <span class="side s${UI.musterSide}">${esc((G && G.players ? G.players[UI.musterSide].name : UI.musterSide === 0 ? "Pale" : "Dun"))}</span></span>
+    <p class="dim">Ten bases take the field. The King holds the centre of the back row.</p>
+    <table class="muster">
+      <thead><tr><th scope="col">Warrior</th><th scope="col">Bases</th><th scope="col">Per base</th><th scope="col">Figures</th></tr></thead>
+      <tbody>
+        <tr class="locked"><th scope="row">King</th><td class="step"><b>1</b></td><td class="step"><b>1</b></td><td class="pool">1 of 1</td></tr>
+        ${rows}
+      </tbody>
+    </table>
+    <p class="tally">Bases <b class="${n === BASES_TOTAL ? "ok" : "bad"}">${n}</b> of ${BASES_TOTAL}
+       &middot; ${specFigures(spec)} warriors</p>
+    <p class="why" role="status">${why ? esc(why) : "Ready."}</p>
+    <div class="muster-actions">
+      <button class="btn" data-act="musterPreset">Basic army</button>
+      <button class="btn" data-act="musterConfirm" ${why ? "disabled" : ""}>Take the field</button>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
    RULE TESTS — hand-built positions for the rules random play
    cannot reach. A full 4-dice base suffers a total panic once in
    1296 attacks, so the retreat cascade -- the single riskiest
@@ -2037,6 +2348,19 @@ const RULE_TESTS = [
     force([PANIC, PANIC]);
     const res = attackWith(inf, foe);
     return res.hits === 0 && res.removed === 0 && foe.figs === 4 && res.panicSteps === 1;
+  }],
+
+  ["a Peasant keeps its hits AND observes the PANIC (rulebook p.6 example)", () => {
+    const [pea, foe] = testPosition([
+      { side: 0, type: "peasant", figs: 4, c: 4, r: 5, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 4, face: S },
+    ]);
+    force([AXE, AXE, ARROW, PANIC]);
+    const res = attackWith(pea, foe);
+    /* 2 axes beats 1 arrow, so 2 hits land; the single PANIC still retreats
+       the Peasant one square, after the figures come off. */
+    return res.hits === 2 && res.removed === 2 && foe.figs === 2 &&
+           res.panicSteps === 1 && pea.alive && pea.r === 6 && pea.face === S;
   }],
 
   ["a panicking unit retreating off the board is eliminated", () => {
@@ -2181,6 +2505,78 @@ const RULE_TESTS = [
     return !last.alive && v && v.winner === 0 && v.reason === "alone";
   }],
 
+  ["the printed basic army is a legal muster: 10 bases, 33 warriors", () => {
+    const spec = basicSpec();
+    return validateArmy(spec, { partialBases: true }) === null &&
+           specBases(spec) === 10 && specFigures(spec) === 33;
+  }],
+
+  ["a muster cannot field more figures than the player owns", () => {
+    const spec = basicSpec();
+    spec.infantry = { bases: 6, figs: 4 };        /* 24 Infantry; the pool is 20 */
+    spec.archer = { bases: 1, figs: 4 };
+    const why = validateArmy(spec, { partialBases: true });
+    return !!why && /own 20/.test(why);
+  }],
+
+  ["a muster cannot exceed the printed base caps for the specials", () => {
+    const blank = () => ({ knight: { bases: 0, figs: 0 }, archer: { bases: 0, figs: 0 },
+                           infantry: { bases: 0, figs: 0 }, heavy: { bases: 0, figs: 0 },
+                           peasant: { bases: 0, figs: 0 }, mercenary: { bases: 0, figs: 0 } });
+    const mk = (t, bases, figs) => { const sp = blank(); sp[t] = { bases, figs }; return validateArmy(sp, { partialBases: true }); };
+
+    /* Mercenaries are the only special whose BASE cap binds independently:
+       2 bases of 1 stays inside the pool of 2, but the rules allow 1 base. */
+    if (!/allows 1 base/.test(mk("mercenary", 2, 1) || "")) return false;
+
+    /* For Heavy Infantry and Peasants the figure pool binds first -- 3 Heavy
+       bases needs 3 figures and you own 2 -- so the cap is unreachable. Both
+       are still rejected, which is what matters. */
+    if (!mk("heavy", 3, 1) || !mk("peasant", 5, 1)) return false;
+
+    /* And the legal maxima are accepted on their own terms. */
+    return validateArmy(Object.assign(blank(), { heavy: { bases: 2, figs: 1 } }), { partialBases: true }) !== null &&
+           /bases still to fill/.test(validateArmy(Object.assign(blank(), { heavy: { bases: 2, figs: 1 } }), { partialBases: true }));
+  }],
+
+  ["a base cannot be over-filled beyond its printed maximum", () => {
+    const spec = basicSpec();
+    spec.peasant = { bases: 1, figs: 5 };          /* "up to 4 on a base" */
+    const why = validateArmy(spec, { partialBases: true });
+    return !!why && /only 4 fit/.test(why);
+  }],
+
+  ["a muster must be exactly ten bases, and says how many are missing", () => {
+    const spec = basicSpec();
+    spec.infantry = { bases: 3, figs: 4 };          /* 8 bases with the King */
+    const why = validateArmy(spec, { partialBases: true });
+    return !!why && /2 bases still to fill/.test(why);
+  }],
+
+  ["every army the bot musters is legal", () => {
+    G = { cfg: { partialBases: true } };
+    for (let seed = 0; seed < 200; seed++) {
+      const spec = botMuster(0, seed);
+      if (validateArmy(spec, { partialBases: true }) !== null) return false;
+      if (specBases(spec) !== 10) return false;
+    }
+    return true;
+  }],
+
+  ["a customised game deploys ten bases a side, in the back two rows only", () => {
+    newGame(9, { setup: "custom" });
+    for (const side of [0, 1]) {
+      const mine = G.units.filter(u => u.side === side);
+      if (mine.length !== 10) return false;
+      const rows = side === 0 ? [H - 1, H - 2] : [0, 1];
+      if (!mine.every(u => rows.includes(u.r))) return false;
+      const king = mine.find(u => u.type === "king");
+      if (!king || king.c !== 4 || king.r !== (side === 0 ? H - 1 : 0)) return false;
+      if (new Set(mine.map(u => idx(u.c, u.r))).size !== mine.length) return false;
+    }
+    return true;
+  }],
+
   ["a unit may not attack twice in the same turn, but another unit may", () => {
     const [a, b] = testPosition([
       { side: 0, type: "infantry", figs: 4, c: 4, r: 5, face: N },
@@ -2253,7 +2649,8 @@ const UI = {
   reducedMotion: false, headless: false, autoHuman: false,
   sel: null, cur: null, focusInGrid: false,
   eventQueue: [], animating: false, advancing: false, needAdvance: false,
-  curtain: false, speedFactor: 1, undo: [], help: false,
+  curtain: false, curtainThen: null, speedFactor: 1, undo: [], help: false,
+  musterOpen: false, musterSide: 0, muster: null, musterSpecs: null, pendingOpponent: "ai",
 };
 
 const RAIL = [
@@ -2277,6 +2674,7 @@ function renderRail() {
 window.__PH = {
   get G() { return G; },
   newGame, startGame, runSim, runMatch, playBotGame, playRandomGame, ruleTests,
+  validateArmy, basicSpec, botMuster, specBases, specFigures, unitsFromSpec, MUSTER_ORDER,
   botChooseTurn, evaluate, expectedAttack, SKILL, assertInvariants, checkVictory,
   tryAction, activateSquare, get UI() { return UI; },
   legalActions, buildGrid, UNIT_DEFS, DICE_DIST,
