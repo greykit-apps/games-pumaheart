@@ -1104,6 +1104,14 @@ function sameAction(a, b) {
 /* The single mutation entry point used by BOTH the human input layer and
    the bot, so there is one path through which the game can change. */
 function doAction(a) {
+  /* Logged here rather than in the human input path, so the field report
+     records BOTH sides. Attacks are logged by attackEvents() instead, which
+     also reports the dice. */
+  const actor = byUid(G, a.uid);
+  const who = `${G.players[actor.side].name} ${defOf(actor).name}`;
+  if (a.kind === "move") log(`${who} advances to ${squareName(a.c, a.r)}.`);
+  if (a.kind === "turn") log(`${who} faces ${FACE_NAMES[a.face]}.`);
+
   applyAction(G, a);
   const v = checkVictory(G);
   if (v) { G.result = v; G.gameOver = true; }
@@ -1277,6 +1285,13 @@ function renderLog() {
 function log(msg) {
   G.log.push(msg);
   if (G.log.length > 200) G.log.shift();
+  announce(msg);
+}
+
+/* Screen-reader commentary only. Action counts and cursor feedback matter
+   to someone who cannot see the pips, but they are noise in the visible
+   field report, which is a record of what happened on the field. */
+function announce(msg) {
   const a = document.getElementById("announcements");
   if (a) a.textContent = msg;
 }
@@ -1386,10 +1401,6 @@ function tryAction(a) {
 
   if (a.kind === "attack") { UI.undo = []; } else { pushUndo(); }
 
-  const u = byUid(G, a.uid);
-  if (a.kind === "move") log(`${G.players[u.side].name} ${defOf(u).name} advances to ${squareName(a.c, a.r)}.`);
-  if (a.kind === "turn") log(`${G.players[u.side].name} ${defOf(u).name} faces ${FACE_NAMES[a.face]}.`);
-
   doAction(a);
   if (a.kind === "move" || a.kind === "turn") UI.cur = idx(byUid(G, a.uid).c, byUid(G, a.uid).r);
   if (!byUid(G, a.uid).alive) UI.sel = null;
@@ -1401,7 +1412,7 @@ function tryAction(a) {
 function announceActions() {
   if (G.gameOver) return;
   const n = G.actionsLeft;
-  log(n === 0 ? "No actions left." : n === 1 ? "One action left." : "Two actions left.");
+  announce(n === 0 ? "No actions left." : n === 1 ? "One action left." : "Two actions left.");
 }
 
 /* Contextual activation: the square under the cursor decides what happens,
