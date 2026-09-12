@@ -211,6 +211,43 @@ body::after {
 .u[data-face="3"]::after { left: -4px; top: 50%; margin-top: -4px;
   border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-right: 5px solid currentColor; }
 
+/* Menu, help and tutorial share the overlay shell */
+#menu, #help, #tutorial {
+  position: fixed; inset: 0; z-index: 8200; display: flex;
+  align-items: center; justify-content: center; background: rgba(10,10,10,0.94);
+  overflow: auto; padding: 16px;
+}
+#menu[hidden], #help[hidden], #tutorial[hidden] { display: none !important; }
+.menu-card { background: var(--bg); min-width: 340px; max-width: 560px; }
+.help-card { background: var(--bg); max-width: 780px; }
+.tut-card { background: var(--bg); max-width: 420px; }
+.menu-rows { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 10px 0 14px; align-items: start; }
+.menu-rows dt { color: var(--amber); }
+.menu-rows dd { margin: 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.opt {
+  border: 1px solid var(--border); padding: 2px 8px; cursor: pointer; color: var(--text-dim);
+}
+.opt:hover { border-color: var(--amber-dim); color: var(--text); }
+.opt.on { border-color: var(--green-dark); color: var(--green); }
+.prov-head { color: var(--amber); margin: 10px 0 4px; }
+ul.house { list-style: none; margin: 0 0 12px; padding: 0; }
+ul.house li { border-top: 1px solid var(--panel-2); padding: 6px 0; }
+ul.house .prov { color: var(--amber-dim); font-size: 11px; margin-left: 8px; }
+ul.house p { margin: 3px 0 0; font-size: 13px; }
+.help-card h3 { color: var(--amber); font-size: 12px; letter-spacing: 0.12em;
+  text-transform: uppercase; margin: 16px 0 6px; }
+.help-card p { margin: 6px 0; }
+.scrollx { overflow-x: auto; }
+table.ref { border-collapse: collapse; width: 100%; }
+table.ref th, table.ref td { text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--panel-2);
+  vertical-align: top; }
+table.ref thead th { color: var(--amber); font-weight: normal; font-size: 11px;
+  letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
+table.ref tbody th { font-weight: normal; white-space: nowrap; }
+table.ref td.note { color: var(--text-dim); font-size: 12px; min-width: 220px; }
+table.ref.keys { max-width: 460px; }
+.u .pipnum { position: static; font-size: 10px; color: currentColor; line-height: 1; }
+
 /* Dice tray */
 #tray .dice-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .die {
@@ -338,9 +375,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
     <span class="brand">Puma<b>Heart</b></span>
     <span id="hud-state"></span>
     <span class="hud-new">
-      <span class="cmd" data-act="newBasic" role="button" tabindex="0">Basic</span>
-      <span class="cmd" data-act="newCustom" role="button" tabindex="0">Customised</span>
-      <span class="cmd" data-act="newHotseat" role="button" tabindex="0">Hot-seat</span>
+      <span class="cmd" data-act="menuOpen" role="button" tabindex="0">New game</span>
       <span class="cmd" data-act="speed" role="button" tabindex="0" id="hud-speed"></span>
       <span class="cmd" data-act="mute" role="button" tabindex="0" id="hud-mute"></span>
     </span>
@@ -374,6 +409,9 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 </div>
 <div id="curtain" hidden></div>
 <div id="muster" hidden></div>
+<div id="menu" hidden></div>
+<div id="help" hidden></div>
+<div id="tutorial" hidden></div>
 <div id="announcements" class="sr-only" aria-live="polite"></div>
 
 <script>
@@ -453,6 +491,16 @@ const UNIT_DEFS = {
 /* Optional printed rule (p.8): 10 Infantry per base, never more than
    4 dice. Off by default -- "If both players agree". */
 const MASSIVE_INFANTRY = { perBase: 10, maxDice: 4 };
+
+/* How many figures fit on a base RIGHT NOW. The printed optional rule (p.8)
+   raises Infantry from 4 to 10, and this is the single place that knows it:
+   the muster, the validator, the invariants and the figure pips all read
+   through here. */
+function perBaseOf(type, cfg) {
+  const c = cfg || (G && G.cfg) || null;
+  if (type === "infantry" && c && c.massiveInfantry) return MASSIVE_INFANTRY.perBase;
+  return UNIT_DEFS[type].perBase;
+}
 
 /* The box holds exactly 4 combat dice, and no unit can roll more.
    king 1x2, knight 2x2, infantry 4x1, archer 4x1, heavy 2x2,
@@ -922,7 +970,7 @@ function assertInvariants() {
     HARNESS.watermark[u.uid] = u.figs;
 
     if (u.alive) {
-      if (u.figs < 1 || u.figs > UNIT_DEFS[u.type].perBase) {
+      if (u.figs < 1 || u.figs > perBaseOf(u.type)) {
         throw new Error(`Living ${u.type} has ${u.figs} figures ${where}`);
       }
       if (!inBoard(u.c, u.r) || !Number.isInteger(u.c) || !Number.isInteger(u.r)) {
@@ -1340,8 +1388,11 @@ function unitAria(u) {
 function renderUnit(u) {
   const d = defOf(u);
   const stroke = GLYPH_STROKE[u.type];
-  const pips = Array.from({ length: d.perBase }, (_, i) =>
-    `<i class="${i < u.figs ? "on" : "off"}"></i>`).join("");
+  const maxPer = perBaseOf(u.type);
+  const pips = maxPer > 6
+    ? `<b class="pipnum">${u.figs}</b>`          /* ten pips are a smear at 32px */
+    : Array.from({ length: maxPer }, (_, i) =>
+        `<i class="${i < u.figs ? "on" : "off"}"></i>`).join("");
   const sel = UI.sel === u.uid ? " is-sel" : "";
   return `<div class="u s${u.side}${sel}" data-uid="${u.uid}" data-face="${u.face}"
     role="button" tabindex="-1" aria-label="${esc(unitAria(u))}">
@@ -1413,7 +1464,7 @@ function renderStatus() {
     <dl class="stats">
       <dt>Square</dt><dd>${squareName(u.c, u.r)}</dd>
       <dt>Facing</dt><dd>${FACE_NAMES[u.face]}</dd>
-      <dt>Figures</dt><dd>${u.figs} of ${d.perBase}</dd>
+      <dt>Figures</dt><dd>${u.figs} of ${perBaseOf(u.type)}</dd>
       <dt>Dice</dt><dd>${diceFor(u)}</dd>
       <dt>Hits to kill each</dt><dd>${d.htk}</dd>
     </dl>
@@ -1463,6 +1514,9 @@ function updateAll() {
   renderStatus();
   renderCurtain();
   renderMuster();
+  renderMenu();
+  renderHelp();
+  renderTutorial();
   renderLog();
   restoreFocus();
 }
@@ -1553,7 +1607,7 @@ function selUnit() {
   return u && u.alive ? u : null;
 }
 function myTurn() {
-  return !G.gameOver && isHuman(G.turn) && !UI.animating && !UI.curtain && !UI.musterOpen;
+  return !G.gameOver && isHuman(G.turn) && !UI.animating && !UI.curtain && !UI.musterOpen && !UI.menuOpen && !UI.helpOpen && !UI.tutorialOpen;
 }
 
 function selectUnit(uid) {
@@ -1685,9 +1739,17 @@ const ACTS = {
   musterConfirm: musterConfirm,
   speed: cycleSpeed,
   mute: toggleMute,
-  newBasic: () => { clearSave(); UI.musterOpen = false; startGame(undefined, { setup: "basic", opponent: "ai" }); },
-  newCustom: () => { clearSave(); UI.pendingOpponent = "ai"; UI.musterSpecs = null; openMuster(0); },
-  newHotseat: () => { clearSave(); UI.pendingOpponent = "hotseat"; UI.musterSpecs = null; openMuster(0); },
+  menuOpen: openMenu,
+  menuClose: closeMenu,
+  menuBegin: menuBegin,
+  menuPick: el => { UI.menu[el.dataset.group] = el.dataset.value; updateAll(); },
+  menuHouse: el => { UI.menu.house[el.dataset.key] = !UI.menu.house[el.dataset.key]; updateAll(); },
+  helpClose: () => { UI.helpOpen = false; updateAll(); },
+  tutNext: () => {
+    if (UI.tutorialStep >= TUTORIAL.length - 1) { tutorialDone(); return; }
+    UI.tutorialStep++; updateAll();
+  },
+  tutSkip: tutorialDone,
   newGame: () => { clearSave(); startGame(); },
 };
 
@@ -1705,7 +1767,19 @@ const KEYS = {
   1: () => faceSelected(N), 2: () => faceSelected(E), 3: () => faceSelected(S), 4: () => faceSelected(WEST),
   q: () => dispatchAct("turnLeft"), e: () => dispatchAct("turnRight"),
   f: attackAhead, z: doUndo, ".": passTurn, m: toggleMute, s2: null,
-  Escape: () => { UI.sel = null; UI.curtain = false; updateAll(); },
+  /* Escape dismisses the topmost overlay, then falls back to clearing the
+     selection. It deliberately does NOT clear the handover curtain: that has
+     to go through Ready, which calls advance(), or the phase machine is left
+     parked on a WAIT nothing resumes. The muster is not escapable either --
+     you cannot take the field without an army. */
+  Escape: () => {
+    if (UI.helpOpen) { UI.helpOpen = false; updateAll(); return; }
+    if (UI.menuOpen) { UI.menuOpen = false; updateAll(); return; }
+    if (UI.tutorialOpen) { tutorialDone(); return; }
+    if (UI.musterOpen || UI.curtain) return;
+    UI.sel = null;
+    updateAll();
+  },
   h: () => toggleHelp(), "?": () => toggleHelp(),
 };
 
@@ -1753,7 +1827,8 @@ function setupInput() {
 }
 
 function toggleHelp() {
-  UI.help = !UI.help;
+  UI.helpOpen = !UI.helpOpen;
+  if (UI.helpOpen) UI.menuOpen = false;
   updateAll();
 }
 
@@ -1763,6 +1838,7 @@ function startGame(seed, opts) {
   newGame(seed == null ? Math.floor(Math.random() * 1e9) : seed, opts);
   Object.assign(G.cfg, opts || {});
   if (G.cfg.opponent === "hotseat") G.players[1].isBot = false;
+  else G.players[1].skill = UI.pendingSkill != null ? +UI.pendingSkill : 1;
   UI.sel = null; UI.undo = []; UI.cur = idx(4, H - 1);
   log("The prides take the field.");
   advance();
@@ -2080,9 +2156,10 @@ function validateArmy(spec, cfg) {
     const d = UNIT_DEFS[t];
     if (e.bases < 0 || e.figs < 0) return `${d.name}: negative count.`;
     if (e.bases > 0 && e.figs < 1) return `${d.name}: a base cannot be empty.`;
-    if (e.figs > d.perBase) return `${d.name}: only ${d.perBase} fit on a base.`;
-    if (e.bases > 0 && !partial && e.figs !== d.perBase && t !== "heavy" && t !== "peasant") {
-      return `${d.name}: bases must be filled to ${d.perBase}.`;
+    const maxPer = perBaseOf(t, cfg);
+    if (e.figs > maxPer) return `${d.name}: only ${maxPer} fit on a base.`;
+    if (e.bases > 0 && !partial && e.figs !== maxPer && t !== "heavy" && t !== "peasant") {
+      return `${d.name}: bases must be filled to ${maxPer}.`;
     }
     const used = e.bases * e.figs;
     if (used > d.perPlayer) {
@@ -2201,17 +2278,17 @@ function musterAdjust(type, field, delta) {
   const d = UNIT_DEFS[type];
   if (field === "bases") {
     e.bases = Math.max(0, Math.min(BASES_TOTAL - 1, e.bases + delta));
-    if (e.bases > 0 && e.figs < 1) e.figs = Math.min(d.perBase, d.perPlayer);
+    if (e.bases > 0 && e.figs < 1) e.figs = Math.min(perBaseOf(type, UI.houseRules), d.perPlayer);
     if (e.bases === 0) e.figs = 0;
   } else {
-    e.figs = Math.max(0, Math.min(d.perBase, e.figs + delta));
+    e.figs = Math.max(0, Math.min(perBaseOf(type, UI.houseRules), e.figs + delta));
     if (e.figs > 0 && e.bases < 1) e.bases = 1;
   }
   updateAll();
 }
 
 function musterConfirm() {
-  if (validateArmy(UI.muster, { partialBases: true })) return;
+  if (validateArmy(UI.muster, UI.houseRules)) return;
   UI.musterSpecs = UI.musterSpecs || {};
   UI.musterSpecs[UI.musterSide] = JSON.parse(JSON.stringify(UI.muster));
 
@@ -2230,7 +2307,9 @@ function musterConfirm() {
   const specs = { 0: UI.musterSpecs[0], 1: UI.musterSpecs[1] || null };
   UI.musterOpen = false;
   UI.musterSpecs = null;
-  startGame(undefined, { setup: "custom", opponent: UI.pendingOpponent || "ai", specs });
+  clearSave();
+  startGame(undefined, Object.assign(houseRulesToCfg(UI.houseRules || defaultHouseRules()),
+    { setup: "custom", opponent: UI.pendingOpponent || "ai", specs }));
 }
 
 function renderMuster() {
@@ -2243,7 +2322,7 @@ function renderMuster() {
     const d = UNIT_DEFS[t], e = spec[t];
     const used = e.bases * e.figs;
     const cap = CUSTOM_BASE_CAPS[t];
-    const over = used > d.perPlayer || e.figs > d.perBase || (cap !== undefined && e.bases > cap);
+    const over = used > d.perPlayer || e.figs > perBaseOf(t, UI.houseRules) || (cap !== undefined && e.bases > cap);
     return `<tr class="${over ? "bad" : ""}">
       <th scope="row">${esc(d.name)}${cap !== undefined ? `<span class="cap"> max ${cap} base${cap === 1 ? "" : "s"}</span>` : ""}</th>
       <td class="step">
@@ -2260,7 +2339,7 @@ function renderMuster() {
     </tr>`;
   }).join("");
 
-  const why = validateArmy(spec, { partialBases: true });
+  const why = validateArmy(spec, UI.houseRules);
   const n = specBases(spec);
 
   el.innerHTML = `<div class="box muster-card">
@@ -2471,6 +2550,197 @@ function loadPrefs() {
     UI.speed = (sp >= 1 && sp <= 3) ? sp : 1;
   } catch (e) { UI.muted = false; UI.speed = 1; }
   applySpeed();
+}
+
+/* ============================================================
+   HOUSE RULES
+   Each carries its provenance, because "optional rule" and "we
+   invented this" are not the same claim. Everything is off by
+   default, so the shipped defaults are the printed game.
+   ============================================================ */
+const HOUSE_RULES = [
+  { key: "massiveInfantry", name: "Massive Infantry",
+    source: "Printed optional rule, rulebook p.8",
+    note: "All 20 Infantry a side, up to 10 on a base. Never more than 4 dice. “If both players agree.”" },
+  { key: "strictBases", name: "Bases must be filled",
+    source: "Our reading of a gap in the rules",
+    note: "The rulebook prints fixed counts for basic units but calls 4 “the standard limit”, so we allow under-filled bases. Turn this on for the strict reading." },
+  { key: "useRoundCap", name: "60-round limit",
+    source: "Not a rule at all",
+    note: "No such limit is printed. It exists so headless simulations terminate, and is off in human play." },
+];
+
+function defaultHouseRules() {
+  return { massiveInfantry: false, strictBases: false, useRoundCap: false, partialBases: true };
+}
+function houseRulesToCfg(hr) {
+  return { massiveInfantry: !!hr.massiveInfantry, partialBases: !hr.strictBases,
+           roundCap: hr.useRoundCap ? 60 : 0 };
+}
+
+/* ============================================================
+   MENU — the one place a game is configured. Difficulty lives
+   here because the AI had no selector at all until now.
+   ============================================================ */
+function openMenu() { UI.menuOpen = true; UI.helpOpen = false; updateAll(); }
+function closeMenu() { UI.menuOpen = false; updateAll(); }
+
+function menuBegin() {
+  const m = UI.menu;
+  UI.menuOpen = false;
+  UI.pendingOpponent = m.opponent;
+  UI.pendingSkill = m.skill;
+  UI.houseRules = Object.assign(defaultHouseRules(), m.house);
+  const cfg = Object.assign(houseRulesToCfg(UI.houseRules), { opponent: m.opponent });
+  if (m.setup === "custom") { UI.musterSpecs = null; openMuster(0); return; }
+  clearSave();
+  startGame(undefined, Object.assign({ setup: "basic" }, cfg));
+}
+
+function renderMenu() {
+  const el = document.getElementById("menu");
+  if (!UI.menuOpen) { el.hidden = true; return; }
+  el.hidden = false;
+  const m = UI.menu;
+  const pick = (group, value, label, sub) =>
+    `<span class="opt ${m[group] === value ? "on" : ""}" data-act="menuPick" data-group="${group}"
+      data-value="${value}" role="button" tabindex="0" aria-pressed="${m[group] === value}">
+      ${esc(label)}${sub ? `<span class="dim"> ${esc(sub)}</span>` : ""}</span>`;
+
+  const skills = SKILL.map((sk, i) => pick("skill", String(i), sk.name)).join("");
+  const house = HOUSE_RULES.map(h => `
+    <li>
+      <span class="opt ${m.house[h.key] ? "on" : ""}" data-act="menuHouse" data-key="${h.key}"
+        role="button" tabindex="0" aria-pressed="${!!m.house[h.key]}">${m.house[h.key] ? "■" : "□"} ${esc(h.name)}</span>
+      <span class="prov">${esc(h.source)}</span>
+      <p class="dim">${esc(h.note)}</p>
+    </li>`).join("");
+
+  el.innerHTML = `<div class="box menu-card">
+    <span class="box-label">New Game</span>
+    <dl class="menu-rows">
+      <dt>Army</dt><dd>${pick("setup", "basic", "Basic", "the printed opening")}${pick("setup", "custom", "Customised", "muster your own")}</dd>
+      <dt>Opponent</dt><dd>${pick("opponent", "ai", "Versus AI")}${pick("opponent", "hotseat", "Hot-seat", "two players, one screen")}</dd>
+      ${m.opponent === "ai" ? `<dt>Difficulty</dt><dd>${skills}</dd>` : ""}
+    </dl>
+    <p class="prov-head">House rules &mdash; all off by default, so the defaults are the printed game.</p>
+    <ul class="house">${house}</ul>
+    <div class="muster-actions">
+      <button class="btn" data-act="menuClose">Cancel</button>
+      <button class="btn" data-act="menuBegin">Begin</button>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   HELP — rendered FROM the rule tables, never transcribed
+   beside them, so a change to a printed number reaches the help
+   with no edit here. That is the B10 gate.
+   ============================================================ */
+function renderHelp() {
+  const el = document.getElementById("help");
+  if (!UI.helpOpen) { el.hidden = true; return; }
+  el.hidden = false;
+
+  const order = ["king", "knight", "archer", "infantry", "heavy", "peasant", "mercenary"];
+  const rows = order.map(t => {
+    const d = UNIT_DEFS[t];
+    const per = perBaseOf(t);
+    return `<tr>
+      <th scope="row">${esc(d.name)}</th>
+      <td>${d.perPlayer}</td>
+      <td>${per}</td>
+      <td>${d.dicePerFig}</td>
+      <td>${d.hitFace === null ? "axe or arrow" : d.hitFace === AXE ? "battle-axe" : "arrows"}</td>
+      <td>${d.htk}</td>
+      <td>${d.panics ? (d.panicPerDie ? "per die" : "yes") : "never"}</td>
+      <td class="note">${esc(d.note || "—")}</td>
+    </tr>`;
+  }).join("");
+
+  const keys = RAIL.map(([k, label]) => `<tr><th scope="row"><kbd>${esc(k)}</kbd></th><td>${esc(label)}</td></tr>`).join("")
+    + `<tr><th scope="row"><kbd>arrows</kbd> / <kbd>WASD</kbd></th><td>Move the cursor</td></tr>`
+    + `<tr><th scope="row"><kbd>Enter</kbd></th><td>Select, move or attack, by what is under the cursor</td></tr>`
+    + `<tr><th scope="row"><kbd>1</kbd>&ndash;<kbd>4</kbd></th><td>Face north, east, south, west</td></tr>`
+    + `<tr><th scope="row"><kbd>M</kbd></th><td>Mute</td></tr>`;
+
+  el.innerHTML = `<div class="box help-card">
+    <span class="box-label">How to Play</span>
+    <p><b>${W} files by ${H} ranks.</b> Two actions a turn, taken from Move, Turn and Attack &mdash;
+       the same action twice is allowed, and the two may be split between different units, but
+       no unit attacks twice in a turn.</p>
+    <p><b>A unit is a base of identical figures, and the figure count is everything.</b> It is the
+       unit's strength and its dice pool at once: a four-man Infantry base rolls four dice, and
+       worn to two men it rolls two.</p>
+    <p><b>Facing matters.</b> Foot moves one square forward; Kings and Knights ride as far as they
+       like in a straight line until something blocks them. You must be next to and facing what you
+       attack &mdash; though you may strike its side or rear. Archers are the exception: they hit any
+       single enemy in the block of nine squares ahead, firing over intervening heads.</p>
+    <p><b>Dice.</b> Three battle-axes, two arrows, one PANIC. Most units hit on axes; Archers hit
+       on arrows. Knights, Kings and Heavy Infantry take two hits in the <i>same</i> attack to lose
+       a figure.</p>
+    <p><b>PANIC.</b> If every die comes up PANIC the unit turns about and retreats a square, shoving
+       whoever is behind it into panicking too. A retreat blocked by the board edge, an enemy, your
+       own King or a Mercenary <i>kills the retreating unit</i>. Watch for chain reactions.</p>
+    <p><b>Winning.</b> Kill the enemy King, or leave it standing alone on the field.</p>
+
+    <h3>The warriors</h3>
+    <div class="scrollx"><table class="ref">
+      <thead><tr><th scope="col">Warrior</th><th scope="col">You own</th><th scope="col">Per base</th>
+        <th scope="col">Dice each</th><th scope="col">Hits with</th><th scope="col">Hits to kill each</th>
+        <th scope="col">Panics</th><th scope="col">Notes</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+
+    <h3>Keys</h3>
+    <table class="ref keys">${keys}</table>
+
+    <h3>Where these rules come from</h3>
+    <p class="dim">Everything above is transcribed from the official Parker Brothers rulebook for
+      <i>Lionheart</i> (1997), product 40742-I, which Hasbro still serves at
+      <code>hasbro.com/common/instruct/Lionheart.PDF</code>. The board is nine files by eight ranks;
+      the widely repeated “9 by 10” traces to a single hedged line in a 1998 magazine review and is
+      wrong. The rules are silent on four points &mdash; what you give up when customising, whether a
+      base may be under-filled, how a turn-order tie is broken, and whether a rider may move zero
+      squares &mdash; and those readings are ours.</p>
+    <div class="muster-actions"><button class="btn" data-act="helpClose">Close</button></div>
+  </div>`;
+}
+
+/* ============================================================
+   TUTORIAL — shown once, then never again unless asked for.
+   ============================================================ */
+const TUTORIAL = [
+  ["The field", "Nine files by eight ranks, with your army on the near two rows and theirs on the far two. Only four empty ranks separate you, so contact comes quickly."],
+  ["Two actions", "Each turn you take two actions from Move, Turn and Attack. You may spend both on one unit or split them between two, but no unit attacks twice in a turn."],
+  ["Figures are everything", "The pips under a unit are its figures. They are its strength and its dice pool at once — a four-man base rolls four dice, and worn to two men it rolls two."],
+  ["Facing", "The chevron shows which way a unit faces. Foot moves one square forward; Kings and Knights ride as far as they like in a straight line until blocked."],
+  ["Attacking", "You must be next to and facing your target, though you may strike its side or rear. Archers are different: they hit anything in the nine squares ahead, over the heads of your own line."],
+  ["PANIC", "If every die comes up PANIC the unit turns and runs, shoving your own line backwards. If it is pushed off the board, into an enemy or into your own King, it dies."],
+  ["Winning", "Kill the enemy King, or leave it standing alone on the field. Press ? at any time for the full rules."],
+];
+
+function renderTutorial() {
+  const el = document.getElementById("tutorial");
+  if (!UI.tutorialOpen) { el.hidden = true; return; }
+  el.hidden = false;
+  const i = UI.tutorialStep;
+  const [title, body] = TUTORIAL[i];
+  el.innerHTML = `<div class="box tut-card">
+    <span class="box-label">${esc(title)}</span>
+    <p>${esc(body)}</p>
+    <p class="dim">${i + 1} of ${TUTORIAL.length}</p>
+    <div class="muster-actions">
+      <button class="btn" data-act="tutSkip">Skip</button>
+      <button class="btn" data-act="tutNext" autofocus>${i === TUTORIAL.length - 1 ? "Begin" : "Next"}</button>
+    </div>
+  </div>`;
+}
+
+function tutorialDone() {
+  UI.tutorialOpen = false;
+  try { localStorage.setItem(TUTORIAL_KEY, "1"); } catch (e) {}
+  updateAll();
 }
 
 /* ============================================================
@@ -2873,8 +3143,8 @@ function validateTables() {
   }
   for (const t in UNIT_DEFS) {
     const d = UNIT_DEFS[t];
-    if (d.perBase * d.dicePerFig > MAX_DICE) {
-      throw new Error(`${t} would roll ${d.perBase * d.dicePerFig} dice; the box holds ${MAX_DICE}`);
+    if (Math.min(MAX_DICE, d.perBase * d.dicePerFig) > MAX_DICE) {
+      throw new Error(`${t} would roll more than ${MAX_DICE} dice; the box holds ${MAX_DICE}`);
     }
   }
   const bases = BASIC_ARMY.reduce((s, r) => s + r.bases, 0);
@@ -2904,6 +3174,9 @@ const UI = {
   curtain: false, curtainThen: null, speedFactor: 1, undo: [], help: false,
   musterOpen: false, musterSide: 0, muster: null, musterSpecs: null, pendingOpponent: "ai",
   muted: false, speed: 1, rects: null,
+  menuOpen: false, helpOpen: false, tutorialOpen: false, tutorialStep: 0,
+  pendingSkill: 1, houseRules: null,
+  menu: { setup: "basic", opponent: "ai", skill: "1", house: {} },
 };
 
 const RAIL = [
@@ -2929,7 +3202,8 @@ window.__PH = {
   newGame, startGame, runSim, runMatch, playBotGame, playRandomGame, ruleTests,
   validateArmy, basicSpec, botMuster, specBases, specFigures, unitsFromSpec, MUSTER_ORDER,
   botChooseTurn, evaluate, expectedAttack, SKILL, assertInvariants, checkVictory,
-  sfx, cycleSpeed, toggleMute, SPEED_FACTOR,
+  sfx, cycleSpeed, toggleMute, SPEED_FACTOR, perBaseOf, HOUSE_RULES, TUTORIAL,
+  openMenu, toggleHelp,
   tryAction, activateSquare, get UI() { return UI; },
   legalActions, buildGrid, UNIT_DEFS, DICE_DIST,
 };
@@ -2945,10 +3219,15 @@ function syncRailHeight() {
 function boot() {
   validateTables();
   loadPrefs();
+  UI.houseRules = defaultHouseRules();
+  UI.menu.house = {};
   UI.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   renderRail();
   setupInput();
   startGame();
+  try {
+    if (localStorage.getItem(TUTORIAL_KEY) !== "1") { UI.tutorialOpen = true; updateAll(); }
+  } catch (e) {}
   syncRailHeight();
   addEventListener("resize", syncRailHeight, { passive: true });
   console.log(
