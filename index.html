@@ -147,6 +147,80 @@ body::after {
 #log-list li { padding: 2px 0; border-bottom: 1px solid var(--panel-2); color: var(--text-dim); }
 
 /* ============================================================
+   BOARD & UNITS
+   Side is carried by FOUR channels, never by colour alone: hue,
+   a solid vs dashed base ring, the figure pips, and the
+   aria-label. --pale and --dun sit at 14.5:1 and 10.8:1 against
+   the ground but only 1.34:1 against each other -- they differ
+   in hue, not brightness, which is exactly the pair red-green
+   colour blindness confuses.
+   ============================================================ */
+#grid { display: grid; grid-auto-rows: var(--sq); border: 1px solid var(--border); width: max-content; }
+.sq {
+  position: relative; width: var(--sq); height: var(--sq);
+  border: 1px solid var(--border); background: var(--sq-dark);
+}
+.sq.lt { background: var(--sq-light); }
+.sq.dz0 { background-image: linear-gradient(var(--deploy-pale), var(--deploy-pale)); }
+.sq.dz1 { background-image: linear-gradient(var(--deploy-dun), var(--deploy-dun)); }
+.sq.zone { box-shadow: inset 0 0 0 99px var(--zone); }
+.sq.mv { box-shadow: inset 0 0 0 2px var(--mv); }
+.sq.tg { box-shadow: inset 0 0 0 2px var(--tg); }
+.sq.zone.mv { box-shadow: inset 0 0 0 99px var(--zone), inset 0 0 0 2px var(--mv); }
+.sq.zone.tg { box-shadow: inset 0 0 0 99px var(--zone), inset 0 0 0 2px var(--tg); }
+
+.u { position: absolute; inset: 2px; display: flex; align-items: center; justify-content: center; }
+.u.s0 { color: var(--pale); }
+.u.s1 { color: var(--dun); }
+.u::before {
+  content: ""; position: absolute; inset: 0;
+  border: 2px solid currentColor;              /* side 0 solid ... */
+}
+.u.s1::before { border-style: dashed; }        /* ... side 1 dashed */
+.u.is-sel::before { border-color: var(--sel); box-shadow: 0 0 7px var(--sel); }
+
+.u svg { width: 56%; height: 56%; margin-bottom: 16%; }
+.u svg.fl path { fill: currentColor; }
+.u svg.ln path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+
+/* The figure count is the single most important number in the game -- it is
+   at once the unit's toughness AND its dice pool -- so it is drawn, not
+   merely implied. */
+.u .pips {
+  position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 1.5px;
+}
+.u .pips i { width: 4px; height: 5px; background: currentColor; }
+/* A spent figure reads as ABSENT, not as an outlined box: at 32px a 1px
+   outline is indistinguishable from a fill, so the length of the bar has to
+   carry the count. */
+.u .pips i.off { background: currentColor; opacity: 0.16; }
+
+/* Facing: a chevron on the facing edge, plus the aria-label. */
+.u::after { content: ""; position: absolute; width: 0; height: 0; }
+.u[data-face="0"]::after { top: -4px; left: 50%; margin-left: -4px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 5px solid currentColor; }
+.u[data-face="2"]::after { bottom: -4px; left: 50%; margin-left: -4px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; }
+.u[data-face="1"]::after { right: -4px; top: 50%; margin-top: -4px;
+  border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 5px solid currentColor; }
+.u[data-face="3"]::after { left: -4px; top: 50%; margin-top: -4px;
+  border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-right: 5px solid currentColor; }
+
+/* HUD & status */
+#hud-state { display: flex; align-items: center; gap: 12px; }
+.side.s0 { color: var(--pale); }
+.side.s1 { color: var(--dun); }
+.acts { letter-spacing: 2px; color: var(--amber); }
+.rnd { color: var(--text-dim); }
+.unit-name { margin: 0 0 8px; letter-spacing: 0.1em; text-transform: uppercase; }
+.stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
+.stats dt { color: var(--text-dim); }
+.stats dd { margin: 0; }
+.note { color: var(--text-dim); margin: 10px 0 0; font-size: 13px; }
+.dim { color: var(--text-dim); margin: 0; }
+
+/* ============================================================
    A11Y, TOUCH, MOTION, RESPONSIVE
    ============================================================ */
 *:focus-visible { outline: 2px solid var(--white); outline-offset: 2px; }
@@ -183,7 +257,8 @@ body::after {
 <div id="app">
   <header id="hud">
     <span class="brand">Puma<b>Heart</b></span>
-    <span id="hud-turn" class="sr-only"></span>
+    <span id="hud-state"></span>
+    <span id="hud-turn" class="sr-only" aria-live="polite"></span>
   </header>
 
   <section id="board-wrap" class="box" aria-labelledby="board-label">
@@ -406,9 +481,15 @@ function deployBasic(side) {
 function newGame(seed) {
   G = {
     v: 1, seed: seed, rng: seed,
-    cfg: { setup: "basic", massiveInfantry: false, partialBases: true, roundCap: 60 },
+    cfg: { setup: "basic", opponent: "ai", massiveInfantry: false,
+           partialBases: true, roundCap: 60 },
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
-    units: [], dice: null, log: [], gameOver: false, result: null, nextUid: 1,
+    /* Pride names are placeholders for the author's own wording. */
+    players: [
+      { id: 0, pride: "pale", name: "Pale", isBot: false, losses: 0 },
+      { id: 1, pride: "dun", name: "Dun", isBot: true, losses: 0 },
+    ],
+    units: [], botPlan: [], dice: null, log: [], gameOver: false, result: null, nextUid: 1,
   };
   deployBasic(0);
   deployBasic(1);
@@ -884,6 +965,334 @@ window.__PH = {
 };
 
 /* ============================================================
+   SAVE / LOAD
+   G is pure JSON, so the save is the game. Every localStorage
+   touch is wrapped: quota and private mode must not break play,
+   they may only cost you the resume.
+   ============================================================ */
+const SAVE_KEY = "pumaheart_save_v1";
+const TUTORIAL_KEY = "pumaheart_tutorial_v1";
+const MUTED_KEY = "pumaheart_muted_v1";
+const SPEED_KEY = "pumaheart_speed_v1";
+
+function saveGame() {
+  if (!G || G.gameOver || UI.headless) return;
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, G })); }
+  catch (e) { /* quota or private mode -- the game still plays, it just won't resume */ }
+}
+function loadSave() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+    return s && s.G && !s.G.gameOver ? s.G : null;
+  } catch (e) { return null; }
+}
+function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+
+/* ============================================================
+   PHASE MACHINE
+   STEP[phase][step]() mutates G, sets the next phase/step and
+   returns WAIT (human input needed), ANIM (presentation queued)
+   or NEXT (keep going). Bots never WAIT, so hot-seat, AI and the
+   headless sims all fall out of the single isHuman() branch.
+   ============================================================ */
+const WAIT = "wait", ANIM = "anim", NEXT = "next";
+
+function go(phase, step) { G.phase = phase; G.step = step; }
+function isHuman(side) { return !G.players[side].isBot && !UI.autoHuman; }
+
+function animate(events) {
+  if (UI.headless || UI.reducedMotion) return NEXT;
+  UI.eventQueue = events.concat([{ type: "callback", fn: advance }]);
+  UI.animating = true;
+  processEventQueue();
+  return ANIM;
+}
+
+const STEP = {
+  play: {
+    begin() {
+      for (const u of G.units) if (u.side === G.turn) u.attackedThisTurn = false;
+      G.actionsLeft = 2;
+      const v = checkVictory(G);
+      if (v) { G.result = v; G.gameOver = true; go("gameover", "done"); return NEXT; }
+      if (G.round > G.cfg.roundCap) {
+        G.result = { winner: null, reason: "cap" }; G.gameOver = true;
+        go("gameover", "done"); return NEXT;
+      }
+      go("play", "act"); return NEXT;
+    },
+
+    act() {
+      const grid = buildGrid(G);
+      const acts = legalActions(G, grid, G.turn);
+      if (!acts.length || G.actionsLeft <= 0) { go("play", "endTurn"); return NEXT; }
+      if (isHuman(G.turn)) return WAIT;              /* the only human WAIT in play */
+      if (!G.botPlan || !G.botPlan.length) G.botPlan = [pickWeighted(acts)];
+      go("play", "botAct"); return NEXT;
+    },
+
+    botAct() {
+      const a = G.botPlan.shift();
+      const grid = buildGrid(G);
+      const still = legalActions(G, grid, G.turn).some(x => sameAction(x, a));
+      if (!still) { go("play", "act"); return NEXT; }
+      return doAction(a);
+    },
+
+    /* Entered by doAction for an attack. The state is already final here:
+       this step is presentation and bookkeeping only. */
+    resolve() {
+      go("play", "act");
+      return animate(attackEvents(G.dice));
+    },
+
+    endTurn() {
+      const v = checkVictory(G);
+      if (v) { G.result = v; G.gameOver = true; go("gameover", "done"); return NEXT; }
+      endTurn(G);
+      G.botPlan = [];
+      if (G.cfg.opponent === "hotseat" && isHuman(G.turn)) { go("play", "handoff"); return NEXT; }
+      go("play", "begin"); return NEXT;
+    },
+
+    handoff() {
+      UI.curtain = true;
+      go("play", "begin");
+      return WAIT;                                   /* the curtain's Ready button calls advance() */
+    },
+  },
+
+  gameover: {
+    done() { UI.curtain = false; return WAIT; },
+  },
+};
+
+function sameAction(a, b) {
+  return a.kind === b.kind && a.uid === b.uid &&
+         a.c === b.c && a.r === b.r && a.face === b.face && a.defUid === b.defUid;
+}
+
+/* The single mutation entry point used by BOTH the human input layer and
+   the bot, so there is one path through which the game can change. */
+function doAction(a) {
+  applyAction(G, a);
+  const v = checkVictory(G);
+  if (v) { G.result = v; G.gameOver = true; }
+  if (a.kind === "attack" && !G.gameOver) { go("play", "resolve"); return NEXT; }
+  if (G.gameOver) { go("gameover", "done"); return NEXT; }
+  go("play", "act");
+  return NEXT;
+}
+
+/* Trampoline. The runaway guard is not paranoia: a step that forgets to
+   call go() loops for ever, and a silent hang is far worse than a throw. */
+function advance() {
+  if (!G) return;
+  if (UI.animating || UI.advancing) { UI.needAdvance = true; return; }
+  UI.advancing = true;
+  let guard = 0;
+  try {
+    for (;;) {
+      if (++guard > 2000) { console.error("Phase machine runaway at", G.phase, G.step); break; }
+      const fn = STEP[G.phase] && STEP[G.phase][G.step];
+      if (!fn) { console.error("Unknown step", G.phase, G.step); break; }
+      const r = fn();
+      if (r === WAIT) { if (UI.autoHuman && !G.gameOver) { continue; } break; }
+      if (r === ANIM) { UI.advancing = false; return; }
+    }
+  } finally { UI.advancing = false; }
+  commit();
+}
+
+function commit() {
+  saveGame();
+  if (UI.headless) { assertInvariants(); return; }
+  updateAll();
+  if (UI.needAdvance) { UI.needAdvance = false; advance(); }
+}
+
+/* ============================================================
+   GLYPHS — one silhouette path per unit type on a 24x24 box.
+   Drawn as paths, never as text: no web fonts are loaded and a
+   glyph must not depend on one being present. These are the
+   BOARD treatment; the 16x16 pixel portraits (B5b) are the
+   status-panel treatment, because a portrait is unreadable at
+   32px.
+   ============================================================ */
+const UNIT_GLYPH = {
+  king: "M3 17l1.6-9 4 4.4L12 4l3.4 8.4 4-4.4L21 17zM4 18.4h16V21H4z",
+  knight: "M8.6 3.4c3.4-1 7 .6 8.2 3.6 1.4 3.4-.4 6.4-2.6 8.4l1.4 5.6H6.6l1.2-4.8-3-1.6c-1.6-1-1.4-3 .4-3.6l2-.8-.6-3.4c-.2-1.6.8-2.8 2-3.4z",
+  heavy: "M12 2.6l8.4 3v6.2c0 5.4-4.2 8.8-8.4 9.8-4.2-1-8.4-4.4-8.4-9.8V5.6zM12 6v12",
+  infantry: "M11 2.4h2l1.6 4.2v9.2h-5.2V6.6zM7.4 15h9.2v2.2H7.4zM11 17.8h2V22h-2z",
+  archer: "M7.4 2.6C11.8 5 13.6 8.8 13.6 12s-1.8 7-6.2 9.4l1.2-2.2c3-2 4.2-4.6 4.2-7.2s-1.2-5.2-4.2-7.2zM8.6 4.4l9 7.6-9 7.6",
+  mercenary: "M12 2l2.4 5.2L12 9.6 9.6 7.2zM11 9.6h2V22h-2zM13 10.6h6.4v4.4H13z",
+  peasant: "M5.4 2.6v6.2M9.6 2.6v6.2M13.8 2.6v6.2M4 8.8h11.2M9.2 8.8V22",
+};
+const GLYPH_STROKE = { archer: true, peasant: true, heavy: true };
+
+/* ============================================================
+   RENDERING
+   updateAll() is the ONLY render entry point; sub-renderers
+   build strings. Every interpolated value goes through esc().
+   ============================================================ */
+function squareName(c, r) {
+  /* Files a-i, ranks counted from side 0's back row, so side 0's King
+     starts on e1 and side 1's on e8. */
+  return "abcdefghi"[c] + (H - r);
+}
+
+function unitAria(u) {
+  const d = defOf(u);
+  return `${G.players[u.side].name} ${d.name} at ${squareName(u.c, u.r)}, facing ${FACE_NAMES[u.face]}, `
+       + `${u.figs} of ${d.perBase} ${u.figs === 1 ? "figure" : "figures"}`;
+}
+
+function renderUnit(u) {
+  const d = defOf(u);
+  const stroke = GLYPH_STROKE[u.type];
+  const pips = Array.from({ length: d.perBase }, (_, i) =>
+    `<i class="${i < u.figs ? "on" : "off"}"></i>`).join("");
+  const sel = UI.sel === u.uid ? " is-sel" : "";
+  return `<div class="u s${u.side}${sel}" data-uid="${u.uid}" data-face="${u.face}"
+    role="button" tabindex="-1" aria-label="${esc(unitAria(u))}">
+    <svg viewBox="0 0 24 24" aria-hidden="true" class="${stroke ? "ln" : "fl"}">
+      <path d="${UNIT_GLYPH[u.type]}"/>
+    </svg>
+    <span class="pips" aria-hidden="true">${pips}</span>
+  </div>`;
+}
+
+function renderBoard() {
+  const grid = buildGrid(G);
+  const sel = UI.sel ? byUid(G, UI.sel) : null;
+  const moves = new Set(), targets = new Set(), zone = new Set();
+  if (sel && sel.alive) {
+    for (const m of moveSquares(G, grid, sel)) moves.add(idx(m.c, m.r));
+    for (const t of attackTargets(G, grid, sel)) targets.add(idx(t.c, t.r));
+    if (sel.type === "archer" || defOf(sel).allAdjacent) {
+      for (const s of attackZone(sel)) zone.add(idx(s.c, s.r));
+    }
+  }
+
+  let html = "";
+  for (let r = 0; r < H; r++) {
+    for (let c = 0; c < W; c++) {
+      const k = idx(c, r);
+      const u = byUid(G, grid[k]);
+      const cls = ["sq"];
+      if ((c + r) % 2 === 0) cls.push("lt");
+      if (r <= 1) cls.push("dz1");
+      if (r >= H - 2) cls.push("dz0");
+      if (zone.has(k)) cls.push("zone");
+      if (moves.has(k)) cls.push("mv");
+      if (targets.has(k)) cls.push("tg");
+      const label = u ? esc(unitAria(u)) : `${squareName(c, r)}, empty`;
+      html += `<div class="${cls.join(" ")}" role="gridcell" data-c="${c}" data-r="${r}"
+        tabindex="${UI.cur === k ? 0 : -1}" aria-label="${label}">${u ? renderUnit(u) : ""}</div>`;
+    }
+  }
+  const g = document.getElementById("grid");
+  g.style.gridTemplateColumns = `repeat(${W}, var(--sq))`;
+  g.innerHTML = html;
+}
+
+function renderHUD() {
+  const p = G.players[G.turn];
+  const pips = `<span class="acts" aria-hidden="true">${
+    "●".repeat(G.actionsLeft)}${"○".repeat(Math.max(0, 2 - G.actionsLeft))}</span>`;
+  const who = G.gameOver
+    ? (G.result.winner === null ? "Stalemate" : `${esc(G.players[G.result.winner].name)} wins`)
+    : `${esc(p.name)} to act`;
+  document.getElementById("hud-turn").textContent = who;
+  document.getElementById("hud-state").innerHTML =
+    `<span class="side s${G.turn}">${who}</span> ${G.gameOver ? "" : pips}
+     <span class="rnd">Round ${G.round}</span>`;
+}
+
+function renderStatus() {
+  const u = UI.sel ? byUid(G, UI.sel) : null;
+  const el = document.getElementById("status-body");
+  if (!u || !u.alive) { el.innerHTML = `<p class="dim">No unit selected.</p>`; return; }
+  const d = defOf(u);
+  el.innerHTML = `
+    <p class="unit-name side s${u.side}">${esc(d.name)}</p>
+    <dl class="stats">
+      <dt>Square</dt><dd>${squareName(u.c, u.r)}</dd>
+      <dt>Facing</dt><dd>${FACE_NAMES[u.face]}</dd>
+      <dt>Figures</dt><dd>${u.figs} of ${d.perBase}</dd>
+      <dt>Dice</dt><dd>${diceFor(u)}</dd>
+      <dt>Hits to kill each</dt><dd>${d.htk}</dd>
+    </dl>
+    ${d.note ? `<p class="note">${esc(d.note)}</p>` : ""}`;
+}
+
+function renderLog() {
+  document.getElementById("log-list").innerHTML =
+    G.log.slice(-40).reverse().map(l => `<li>${esc(l)}</li>`).join("");
+}
+
+function log(msg) {
+  G.log.push(msg);
+  if (G.log.length > 200) G.log.shift();
+  const a = document.getElementById("announcements");
+  if (a) a.textContent = msg;
+}
+
+function updateAll() {
+  if (UI.headless || !G) return;
+  renderBoard();
+  renderHUD();
+  renderStatus();
+  renderLog();
+  restoreFocus();
+}
+
+/* updateAll() replaces #grid.innerHTML wholesale, which destroys the focused
+   cell. Without this, keyboard play breaks silently after the first action. */
+function restoreFocus() {
+  const g = document.getElementById("grid");
+  if (!g || UI.cur == null) return;
+  const cell = g.querySelector(`[data-c="${UI.cur % W}"][data-r="${Math.floor(UI.cur / W)}"]`);
+  if (!cell) return;
+  cell.setAttribute("tabindex", "0");
+  if (UI.focusInGrid) cell.focus();
+}
+
+/* ============================================================
+   EVENT QUEUE — presentation only: the state is already final
+   by the time these run. Reduced motion skips the queue
+   entirely rather than merely disabling CSS transitions.
+   ============================================================ */
+function attackEvents(res) {
+  const atk = byUid(G, res.atkUid), def = byUid(G, res.defUid);
+  const faceName = ["axe", "arrow", "PANIC"];
+  const parts = [`${G.players[atk.side].name} ${defOf(atk).name} attacks`,
+                 `${G.players[def.side].name} ${defOf(def).name}`,
+                 `— ${res.faces.map(f => faceName[f]).join(", ")}`];
+  if (res.panicSteps) parts.push("— PANIC!");
+  else if (res.removed) parts.push(`— ${res.removed} lost`);
+  else parts.push("— no effect");
+  return [{ type: "log", text: parts.join(" ") }, { type: "render" }, { type: "wait", delay: 260 }];
+}
+
+function processEventQueue() {
+  const q = UI.eventQueue;
+  const nextEvent = () => {
+    if (!q.length) { UI.animating = false; return; }
+    const e = q.shift();
+    if (e.type === "log") { log(e.text); nextEvent(); return; }
+    if (e.type === "render") { updateAll(); nextEvent(); return; }
+    if (e.type === "callback") { UI.animating = false; e.fn(); return; }
+    if (e.type === "wait") {
+      setTimeout(nextEvent, e.delay * (UI.speedFactor == null ? 1 : UI.speedFactor));
+      return;
+    }
+    nextEvent();
+  };
+  nextEvent();
+}
+
+/* ============================================================
    RULE TESTS — hand-built positions for the rules random play
    cannot reach. A full 4-dice base suffers a total panic once in
    1296 attacks, so the retreat cascade -- the single riskiest
@@ -1222,7 +1631,12 @@ function validateTables() {
    ============================================================ */
 "use strict";
 
-const UI = { reducedMotion: false };
+const UI = {
+  reducedMotion: false, headless: false, autoHuman: false,
+  sel: null, cur: null, focusInGrid: false,
+  eventQueue: [], animating: false, advancing: false, needAdvance: false,
+  curtain: false, speedFactor: 1,
+};
 
 const RAIL = [
   ["M", "Move"], ["T", "Turn"], ["A", "Attack"],
@@ -1240,33 +1654,9 @@ function renderRail() {
     .join("");
 }
 
-/* Placeholder grid so the 9x8 proportions and the four empty ranks
-   between the deployment zones can be eyeballed at every breakpoint. */
-function renderGridStub() {
-  const g = document.getElementById("grid");
-  g.style.display = "grid";
-  g.style.gridTemplateColumns = `repeat(${W}, var(--sq))`;
-  g.style.gridAutoRows = "var(--sq)";
-  g.style.border = "1px solid var(--border)";
-  g.style.width = "max-content";
-  let html = "";
-  for (let r = 0; r < H; r++) {
-    for (let c = 0; c < W; c++) {
-      const light = (c + r) % 2 === 0;
-      // Deployment zones: side 1 on ranks 0-1, side 0 on ranks 6-7.
-      const zone = r <= 1 ? "var(--deploy-dun)" : r >= H - 2 ? "var(--deploy-pale)" : "";
-      const tint = zone ? `box-shadow: inset 0 0 0 99px ${zone};` : "";
-      html += `<div class="sq" role="gridcell" style="background:${
-        light ? "var(--sq-light)" : "var(--sq-dark)"
-      };border:1px solid var(--border);${tint}"></div>`;
-    }
-  }
-  g.innerHTML = html;
-}
-
 /* The rail is fixed to the bottom on narrow screens, so #app must reserve its
-   ACTUAL height -- it grows with the pointer:coarse 44px rule and with wrapping,
-   and any hard-coded reservation is wrong on some device. */
+   ACTUAL height -- it grows with the pointer:coarse 44px rule and with
+   wrapping, and any hard-coded reservation is wrong on some device. */
 function syncRailHeight() {
   const rail = document.getElementById("rail");
   document.documentElement.style.setProperty("--rail-h", rail.offsetHeight + "px");
@@ -1276,7 +1666,10 @@ function boot() {
   validateTables();
   UI.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   renderRail();
-  renderGridStub();
+  newGame(Math.floor(Math.random() * 1e9));   // flavour only: the seed, not a rule
+  UI.cur = idx(4, H - 1);
+  log("The prides take the field.");
+  advance();
   syncRailHeight();
   addEventListener("resize", syncRailHeight, { passive: true });
   console.log(
