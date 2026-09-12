@@ -34,7 +34,9 @@ Infantry pays two actions to move or turn, and one to attack.
 
 **The dice are three battle-axes, two arrows and one PANIC.** Most units hit on axes; Archers
 hit on arrows; Peasants score with whichever they rolled the most of. Knights, Kings and Heavy
-Infantry must take two hits in the *same* attack to lose a figure.
+Infantry must take two hits in the *same* attack to lose a figure. Every attack is thrown in
+full view: the dice tumble and settle one at a time, and the outcome is withheld until the last
+one stops.
 
 **PANIC is what makes the game.** If every die comes up PANIC the unit turns about and retreats
 a square, shoving whoever is behind it into panicking too. A retreat blocked by the board edge,
@@ -43,6 +45,7 @@ normal, and they take your own line with them.
 
 Win by killing the enemy King, or by leaving it standing alone on the field.
 
+![An attack resolving](screenshots/combat.png)
 ![Laying the battle plan](screenshots/deploy.png)
 ![The printed opening](screenshots/basic.png)
 ![An Archer firing over its own front rank](screenshots/archer.png)
@@ -158,8 +161,8 @@ __PH.runMatch(0, 2, 100)  // Squire versus Marshal
 The AI reads exact probabilities from a pre-computed dice distribution rather than rolling, so
 it never touches the shared RNG stream — asserted, not assumed.
 
-Screenshots regenerate from fixed seeds: `#shot=basic`, `muster`, `deploy`, `archer`, `panic`,
-`midgame`, `gameover`.
+Screenshots regenerate from fixed seeds: `#shot=basic`, `muster`, `deploy`, `combat`, `archer`,
+`panic`, `midgame`, `gameover`.
 
 ## Other Puma Games
 

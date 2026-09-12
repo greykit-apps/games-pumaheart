@@ -210,7 +210,7 @@ body::after {
 .u.s1 { color: var(--dun); }
 /* The base plate. Stroke stays 2px at every board size, so the shave reads
    the same on a phone as on a desktop. */
-.u .base { position: absolute; inset: 0; width: 100%; height: 100%; }
+.u .base { position: absolute; inset: 0; width: 100%; height: 100%; transform-origin: 50% 50%; }
 .u .base path {
   /* A faint fill matters more than it sounds: an outline alone reads as a
      wire box and you have to inspect the corners, whereas a filled shape
@@ -399,9 +399,11 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 }
 .sq:active .u .base path { fill-opacity: 0.4; transition-duration: 70ms; }
 
-/* The selection ring settles in rather than snapping on. */
-@keyframes ringIn { from { opacity: 0; transform: scale(1.22); } to { opacity: 1; transform: none; } }
-.u.is-sel .base { animation: ringIn 220ms var(--ease-out-expo); }
+/* The base plate owns `transform` for its facing, so selection cannot animate
+   scale on the same element without fighting the rotation. The glow carries
+   it instead. */
+@keyframes ringIn { from { filter: drop-shadow(0 0 0 var(--sel)); } to { filter: drop-shadow(0 0 5px var(--sel)); } }
+.u.is-sel { animation: ringIn 220ms var(--ease-out-expo); }
 
 /* ============================================================
    OVERLAYS — backdrop fades, card rises. Exit is not animated:
@@ -416,6 +418,64 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   animation-delay: 55ms;
 }
 #deploybar { animation: cardIn 300ms var(--ease-out-expo) backwards; }
+
+/* ============================================================
+   COMBAT CUT-IN
+   A cut-in, not a dialog: pointer-events: none, self-dismissing,
+   nothing waits on the player. The one moment in the game where
+   they have no agency and everything is at stake.
+   ============================================================ */
+#combat {
+  position: absolute; inset: 0; z-index: 40; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  animation: backdropIn 150ms var(--ease-out-quart);
+}
+#combat[hidden] { display: none !important; }
+#combat.is-closing { animation: cutOut 170ms var(--ease-out-quart) forwards; }
+@keyframes cutOut { to { opacity: 0; transform: scale(0.985); } }
+
+.combat-card {
+  background: var(--bg); text-align: center; min-width: min(320px, 88vw);
+  box-shadow: 0 0 0 1px var(--border), 0 18px 60px rgba(0, 0, 0, 0.75);
+  animation: cutIn 260ms var(--ease-out-expo) backwards;
+}
+@keyframes cutIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+.combat-who { margin: 4px 0 14px; }
+.combat-who .dim { margin: 0 6px; }
+.combat-dice { display: flex; gap: 12px; justify-content: center; }
+
+/* Four times the tray's size. The dice are the event, not a readout. */
+.bigdie {
+  width: 66px; height: 66px; border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-dim);
+}
+.bigdie svg { width: 74%; height: 74%; }
+.bigdie svg path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.bigdie.f-axe.scores, .bigdie.f-arrow.scores { color: var(--green); border-color: var(--green-dark); }
+.bigdie.f-panic { color: var(--red); border-color: var(--red-dim); }
+.bigdie.rolling { color: var(--text-dim); border-color: var(--border); animation: rollShake 150ms linear infinite; }
+.bigdie.settled { animation: dieLand 300ms var(--ease-out-expo); }
+
+.combat-out {
+  margin: 16px 0 2px; letter-spacing: 0.12em; text-transform: uppercase;
+  transition: opacity 200ms var(--ease-out-quart);
+}
+/* Withheld until the last die stops. */
+.combat-out.pending { opacity: 0; }
+.combat-out.t-kill { color: var(--red); }
+.combat-out.t-hit { color: var(--amber); }
+.combat-out.t-bad { color: var(--red); }
+.combat-out.t-none { color: var(--text-dim); }
+.combat-note { margin: 6px 0 0; font-size: 12px; }
+
+@media (max-width: 760px) {
+  .combat-card { min-width: 0; width: 100%; }
+  .bigdie { width: 52px; height: 52px; }
+}
 
 /* ============================================================
    TURN ANNOUNCEMENT
@@ -487,6 +547,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+  #combat { display: none !important; }
   body::before, body::after { display: none; }
   .ghost { display: none !important; }
   #turnbar { display: none !important; }
@@ -509,6 +570,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   <section id="board-wrap" class="box" aria-labelledby="board-label">
     <span class="box-label" id="board-label">Field</span>
     <div id="grid" role="grid" aria-label="Battlefield, 9 files by 8 ranks"></div>
+    <div id="combat" hidden></div>
   </section>
 
   <aside id="side">
@@ -1554,13 +1616,25 @@ const GLYPH_STROKE = { archer: true, peasant: true, heavy: true };
    FRONT are shaved off, so a unit points the way a ship's prow does. A small
    chevron was the previous channel and it was too fine to read at a glance
    across ten bases -- the silhouette reads instantly and survives being
-   scaled to 32px. Drawn in a 100x100 box, stretched to the base. */
-const BASE_SHAPE = {
-  0: "M36 0H64L100 42V100H0V42Z",      /* north: front corners cut */
-  1: "M0 0H58L100 36V64L58 100H0Z",    /* east                     */
-  2: "M0 0H100V58L64 100H36L0 58Z",    /* south                    */
-  3: "M42 0H100V100H42L0 64V36Z",      /* west                     */
-};
+   scaled to 32px.
+
+   ONE shape, rotated, rather than four baked paths. Swapping paths made a
+   turn snap; rotating a single plate lets it swing. Drawn pointing north in
+   a 100x100 box, stretched to the base. */
+const BASE_SHAPE = "M36 0H64L100 42V100H0V42Z";
+
+/* Rotation is accumulated per unit rather than derived from the facing, so a
+   turn always takes the SHORT way round: west to north is +90, never -270.
+   Presentation only -- it lives in UI, never in G. */
+function baseAngle(u) {
+  if (!UI.angles) UI.angles = {};
+  const want = u.face * 90;
+  const prev = UI.angles[u.uid];
+  if (prev == null) { UI.angles[u.uid] = want; return want; }
+  let delta = ((want - (prev % 360)) % 360 + 540) % 360 - 180;
+  UI.angles[u.uid] = prev + delta;
+  return UI.angles[u.uid];
+}
 
 /* ============================================================
    RENDERING
@@ -1590,8 +1664,9 @@ function renderUnit(u) {
   const sel = UI.sel === u.uid ? " is-sel" : "";
   return `<div class="u s${u.side}${sel}" data-uid="${u.uid}" data-face="${u.face}"
     role="button" tabindex="-1" aria-label="${esc(unitAria(u))}">
-    <svg class="base" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-      <path d="${BASE_SHAPE[u.face]}"/>
+    <svg class="base" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"
+      style="transform:rotate(${baseAngle(u)}deg)">
+      <path d="${BASE_SHAPE}"/>
     </svg>
     <svg viewBox="0 0 24 24" aria-hidden="true" class="${stroke ? "ln" : "fl"}">
       <path d="${UNIT_GLYPH[u.type]}"/>
@@ -1806,10 +1881,13 @@ function attackEvents(res) {
   else if (res.removed) parts.push(`\u2014 ${res.removed} lost`);
   else parts.push("\u2014 no effect");
 
+  /* The cut-in runs FIRST, while the board still shows the position as it was
+     when the dice were thrown. Only once the outcome has been read does the
+     board re-render and take the casualty off. */
   const ev = [
     { type: "sfx", name: "dice" },
-    { type: "render" },                    /* the tray paints the final faces */
-    { type: "roll" },                      /* ...then tumbles them into view */
+    { type: "combat", res },
+    { type: "render" },
     { type: "log", text: parts.join(" ") },
   ];
   if (res.removed) ev.push({ type: "sfx", name: res.killed ? "kill" : "hit" });
@@ -1831,52 +1909,6 @@ function attackEvents(res) {
   return ev;
 }
 
-/* ============================================================
-   THE ROLL
-   The outcome is already decided before anything is drawn, so
-   the tumble is pure theatre -- which is the point. Dice settle
-   one at a time and the verdict is withheld until the last one
-   lands, so a Knight needing two axes is genuinely in doubt
-   until the second die stops.
-
-   The tumbling faces use Math.random(), never rnd(): they are
-   flavour, and drawing them from the seeded stream would make a
-   saved game replay differently depending on how long you
-   watched the dice.
-   ============================================================ */
-function tumbleDice(done) {
-  const dice = [...document.querySelectorAll("#tray .die")];
-  const sf = UI.speedFactor == null ? 1 : UI.speedFactor;
-  if (!dice.length || UI.reducedMotion || UI.headless || sf === 0) { done(); return; }
-
-  const verdict = document.querySelector("#tray .verdict");
-  if (verdict) verdict.classList.add("pending");
-  const finals = dice.map(d => d.innerHTML);
-  const glyphs = [DIE_GLYPH[AXE], DIE_GLYPH[ARROW], DIE_GLYPH[PANIC]];
-
-  dice.forEach((die, i) => {
-    die.classList.add("rolling");
-    die.setAttribute("aria-busy", "true");
-    const spin = setInterval(() => {
-      const g = glyphs[Math.floor(Math.random() * 3)];   // flavour only, never rules
-      die.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${g}"/></svg>`;
-    }, Math.max(42, 58 * sf));
-
-    setTimeout(() => {
-      clearInterval(spin);
-      die.innerHTML = finals[i];
-      die.classList.remove("rolling");
-      die.removeAttribute("aria-busy");
-      die.classList.add("settled");
-      sfx("tick");
-      if (i === dice.length - 1) {
-        if (verdict) verdict.classList.remove("pending");
-        setTimeout(done, 240 * sf);
-      }
-    }, (360 + i * 200) * sf);
-  });
-}
-
 function processEventQueue() {
   const q = UI.eventQueue;
   const nextEvent = () => {
@@ -1884,7 +1916,7 @@ function processEventQueue() {
     const e = q.shift();
     if (e.type === "log") { log(e.text); nextEvent(); return; }
     if (e.type === "sfx") { sfx(e.name); nextEvent(); return; }
-    if (e.type === "roll") { tumbleDice(nextEvent); return; }
+    if (e.type === "combat") { showCombat(e.res, nextEvent); return; }
     if (e.type === "render") { updateAll(); nextEvent(); return; }
     if (e.type === "callback") { UI.animating = false; e.fn(); return; }
     if (e.type === "wait") {
@@ -2795,7 +2827,11 @@ function snapshotRects() {
   if (UI.reducedMotion) { UI.rects = null; return; }
   UI.rects = {};
   for (const el of document.querySelectorAll("#grid .u[data-uid]")) {
-    UI.rects[el.dataset.uid] = { rect: el.getBoundingClientRect(), html: el.outerHTML };
+    const b = el.querySelector(".base");
+    UI.rects[el.dataset.uid] = {
+      rect: el.getBoundingClientRect(), html: el.outerHTML,
+      angle: b ? (parseFloat(b.style.transform.replace(/[^-\d.]/g, "")) || 0) : 0,
+    };
   }
 }
 
@@ -2818,13 +2854,34 @@ function playFlip() {
     if (!was) continue;
     const now = el.getBoundingClientRect();
     const dx = was.rect.left - now.left, dy = was.rect.top - now.top;
-    if (!dx && !dy) continue;
-    const d = (delay[uid] || 0) * (UI.speedFactor == null ? 1 : UI.speedFactor);
-    el.style.transition = "none";
-    el.style.transform = `translate(${dx}px, ${dy}px)`;
+    const base = el.querySelector(".base");
+    const toAngle = base ? (parseFloat(base.style.transform.replace(/[^-\d.]/g, "")) || 0) : 0;
+    const spun = base && Math.abs(toAngle - was.angle) > 0.5;
+    if (!dx && !dy && !spun) continue;
+
+    const sf = UI.speedFactor == null ? 1 : UI.speedFactor;
+    const d = (delay[uid] || 0) * sf;
+    const ms = Math.round(240 * (sf || 1));
+
+    if (dx || dy) {
+      el.style.transition = "none";
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+    }
+    if (spun) {
+      base.style.transition = "none";
+      base.style.transform = `rotate(${was.angle}deg)`;
+    }
     requestAnimationFrame(() => {
-      el.style.transition = `transform ${Math.round(240 * (UI.speedFactor || 1))}ms var(--ease-out-quart) ${Math.round(d)}ms`;
-      el.style.transform = "";
+      if (dx || dy) {
+        el.style.transition = `transform ${ms}ms var(--ease-out-quart) ${Math.round(d)}ms`;
+        el.style.transform = "";
+      }
+      if (spun) {
+        /* A shade longer than the slide: a piece swinging round reads better
+           slightly behind the piece travelling. */
+        base.style.transition = `transform ${Math.round(ms * 1.25)}ms var(--ease-out-expo) ${Math.round(d)}ms`;
+        base.style.transform = `rotate(${toAngle}deg)`;
+      }
     });
   }
 
@@ -3232,6 +3289,26 @@ const SHOTS = {
     log("An Archer looses over its own front rank.");
   },
 
+  /* The cut-in, held at the instant the last die stops. */
+  combat() {
+    newGame(7, { setup: "basic" });
+    const ar = G.units.find(u => u.side === 0 && u.type === "archer");
+    ar.c = 4; ar.r = H - 3;
+    const foe = G.units.find(u => u.side === 1 && u.type === "infantry");
+    foe.c = 4; foe.r = H - 5;
+    HARNESS.forceFaces = [ARROW, AXE, ARROW, ARROW];
+    applyAction(G, { kind: "attack", uid: ar.uid, defUid: foe.uid });
+    HARNESS.forceFaces = null;
+    const el = document.getElementById("combat");
+    el.hidden = false;
+    el.innerHTML = combatCardHTML(G.dice);
+    /* Settled, outcome revealed -- the frame a player actually reads. */
+    for (const d of el.querySelectorAll(".bigdie")) d.classList.add("settled");
+    const line = el.querySelector(".combat-out");
+    if (line) line.classList.remove("pending");
+    log("Three arrows find their mark.");
+  },
+
   /* A panic chain, shown with the dice that caused it still in the tray. */
   panic() {
     newGame(7, { setup: "basic" });
@@ -3270,6 +3347,8 @@ function runShot(name) {
   /* Reset every overlay and selection first. Shots are run back to back when
      regenerating the images, and without this each one inherits the last
      one's open muster or lit archer block. */
+  const cb = document.getElementById("combat");
+  if (cb) { cb.hidden = true; cb.innerHTML = ""; }
   UI.musterOpen = false; UI.menuOpen = false; UI.helpOpen = false;
   UI.tutorialOpen = false; UI.curtain = false; UI.curtainThen = null;
   UI.sel = null; UI.cur = null; UI.rects = null;
@@ -3394,6 +3473,107 @@ function renderDeployBar() {
       <button class="btn" data-act="deployAuto">Re-form the line</button>
       <button class="btn" data-act="deployReady">Take the field</button>
     </div>`;
+}
+
+/* ============================================================
+   COMBAT CUT-IN
+   An attack is the only moment in the game where the player has
+   no agency and everything is at stake, so it gets the screen.
+   Big dice tumble, settle one at a time, and the outcome is
+   held for a beat before the panel clears.
+
+   It is deliberately pointer-events: none and self-dismissing --
+   a cut-in, not a dialog. Nothing waits on the player here.
+
+   Ordering matters as much as the animation: this runs BEFORE
+   the board re-renders, so a base that is about to die is still
+   standing while its dice are in the air. Rendering first, which
+   is what the code did until now, removed the casualty before
+   showing the roll that killed it.
+   ============================================================ */
+function combatOutcome(res) {
+  const atk = byUid(G, res.atkUid), def = byUid(G, res.defUid);
+  const ad = defOf(atk), dd = defOf(def);
+  if (res.panicSteps && !ad.panicPerDie) return { text: "PANIC — the unit breaks", tone: "bad" };
+  if (res.killed) return { text: `${dd.name} base destroyed`, tone: "kill" };
+  if (res.removed) return { text: `${res.removed} ${res.removed === 1 ? "figure" : "figures"} lost`, tone: "hit" };
+  return { text: "No effect", tone: "none" };
+}
+
+/* Shared by the cut-in. Settles each die in turn and calls back when the
+   last one stops, so the outcome can be withheld until then. */
+function tumbleInto(dice, sf, onAllSettled) {
+  const glyphs = [DIE_GLYPH[AXE], DIE_GLYPH[ARROW], DIE_GLYPH[PANIC]];
+  const finals = dice.map(d => d.innerHTML);
+  dice.forEach((die, i) => {
+    die.classList.add("rolling");
+    die.setAttribute("aria-busy", "true");
+    const spin = setInterval(() => {
+      const g = glyphs[Math.floor(Math.random() * 3)];   // flavour only, never rules
+      die.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${g}"/></svg>`;
+    }, Math.max(46, 68 * sf));
+    setTimeout(() => {
+      clearInterval(spin);
+      die.innerHTML = finals[i];
+      die.classList.remove("rolling");
+      die.removeAttribute("aria-busy");
+      die.classList.add("settled");
+      sfx("tick");
+      if (i === dice.length - 1) onAllSettled();
+    }, (425 + i * 262) * sf);
+  });
+}
+
+function combatCardHTML(res) {
+  const atk = byUid(G, res.atkUid), def = byUid(G, res.defUid);
+  const hitFace = defOf(atk).hitFace;
+  const out = combatOutcome(res);
+
+  const dice = res.faces.map(f => {
+    const scores = (hitFace === null ? (f === AXE || f === ARROW) : f === hitFace) && !res.panicSteps;
+    return `<span class="bigdie ${DIE_CLASS[f]}${scores ? " scores" : ""}"
+      role="img" aria-label="${DIE_NAME[f]}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>`;
+  }).join("");
+
+  return `<div class="box combat-card" role="status" aria-live="polite">
+    <span class="box-label">Attack</span>
+    <p class="combat-who">
+      <span class="side s${atk.side}">${esc(G.players[atk.side].name)} ${esc(defOf(atk).name)}</span>
+      <span class="dim">strikes</span>
+      <span class="side s${def.side}">${esc(G.players[def.side].name)} ${esc(defOf(def).name)}</span>
+    </p>
+    <div class="combat-dice">${dice}</div>
+    <p class="combat-out t-${out.tone} pending">${esc(out.text)}</p>
+    ${res.duel ? `<p class="dim combat-note">A single figure against armour: one die, thrown twice.</p>` : ""}
+  </div>`;
+}
+
+function showCombat(res, done) {
+  const el = document.getElementById("combat");
+  const sf = UI.speedFactor == null ? 1 : UI.speedFactor;
+  if (!el || UI.reducedMotion || UI.headless || sf === 0 || !res || !res.faces.length) {
+    if (el) { el.hidden = true; el.innerHTML = ""; }
+    done();
+    return;
+  }
+  el.hidden = false;
+  el.innerHTML = combatCardHTML(res);
+
+  const nodes = [...el.querySelectorAll(".bigdie")];
+  tumbleInto(nodes, sf, () => {
+    const line = el.querySelector(".combat-out");
+    if (line) line.classList.remove("pending");
+    setTimeout(() => {
+      el.classList.add("is-closing");
+      setTimeout(() => {
+        el.classList.remove("is-closing");
+        el.hidden = true;
+        el.innerHTML = "";
+        done();
+      }, 212 * sf);
+    }, 975 * sf);          /* hold the outcome */
+  });
 }
 
 /* ============================================================
