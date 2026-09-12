@@ -138,7 +138,7 @@ body::after {
 #hud { grid-area: hud; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 #hud .brand { color: var(--amber); letter-spacing: 0.22em; text-transform: uppercase; }
 #hud .brand b { color: var(--green); font-weight: 700; }
-#board-wrap { grid-area: board; display: flex; justify-content: center; }
+#board-wrap { grid-area: board; display: flex; justify-content: center; position: relative; }
 #grid { margin: 0 auto; }
 #side { grid-area: side; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 #rail { grid-area: rail; }
@@ -173,11 +173,37 @@ body::after {
 .sq.lt { background: var(--sq-light); }
 .sq.dz0 { background-image: linear-gradient(var(--deploy-pale), var(--deploy-pale)); }
 .sq.dz1 { background-image: linear-gradient(var(--deploy-dun), var(--deploy-dun)); }
-.sq.zone { box-shadow: inset 0 0 0 99px var(--zone); }
-.sq.mv { box-shadow: inset 0 0 0 2px var(--mv); }
-.sq.tg { box-shadow: inset 0 0 0 2px var(--tg); }
-.sq.zone.mv { box-shadow: inset 0 0 0 99px var(--zone), inset 0 0 0 2px var(--mv); }
-.sq.zone.tg { box-shadow: inset 0 0 0 99px var(--zone), inset 0 0 0 2px var(--tg); }
+/* Highlights live on two pseudo layers rather than one box-shadow, so each
+   can animate independently: ::before is the wash and paints UNDER the unit,
+   ::after is the ring and paints OVER it, which is what makes a target ring
+   read as a crosshair. */
+.sq::before, .sq::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
+.sq.zone::before { background: var(--zone); }
+.sq.mv::after { box-shadow: inset 0 0 0 2px var(--mv); }
+.sq.tg::after { box-shadow: inset 0 0 0 2px var(--tg); }
+
+@keyframes bloom { from { opacity: 0; transform: scale(0.72); } to { opacity: 1; transform: none; } }
+#grid.is-blooming .sq.zone::before,
+#grid.is-blooming .sq.mv::after,
+#grid.is-blooming .sq.tg::after {
+  animation: bloom 260ms var(--ease-out-expo) backwards;
+  animation-delay: calc(var(--d, 0) * 42ms);
+}
+/* Targets land after the moves around them, so "you can go there" reads
+   before "you can hit that". */
+#grid.is-blooming .sq.tg::after { animation-delay: calc(var(--d, 0) * 42ms + 90ms); }
+
+/* The armies march on. Opacity and transform only. */
+@keyframes marchIn {
+  from { opacity: 0; transform: translateY(var(--march, 0)) scale(0.88); }
+  to   { opacity: 1; transform: none; }
+}
+#grid.is-entering .u {
+  animation: marchIn 460ms var(--ease-out-expo) backwards;
+  animation-delay: calc(var(--e, 0) * 38ms);
+}
+#grid.is-entering .u.s0 { --march: 26px; }
+#grid.is-entering .u.s1 { --march: -26px; }
 
 .u { position: absolute; inset: 2px; display: flex; align-items: center; justify-content: center; }
 .u.s0 { color: var(--pale); }
@@ -270,17 +296,32 @@ table.ref.keys { max-width: 460px; }
 .die {
   width: 30px; height: 30px; border: 1px solid var(--border);
   display: flex; align-items: center; justify-content: center; color: var(--text-dim);
-  animation: land 220ms var(--ease-out-quart) backwards;
-  animation-delay: calc(var(--i) * 60ms);
 }
 .die svg { width: 74%; height: 74%; }
 .die svg path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .die.f-axe.scores, .die.f-arrow.scores { color: var(--green); border-color: var(--green-dark); }
 .die.f-panic { color: var(--red); border-color: var(--red-dim); }
-#tray .verdict { margin: 8px 0 0; color: var(--amber); }
-@keyframes land {
-  from { transform: translateY(-10px) rotate(-18deg); opacity: 0; }
-  to   { transform: none; opacity: 1; }
+#tray .verdict {
+  margin: 8px 0 0; color: var(--amber);
+  transition: opacity 220ms var(--ease-out-quart);
+}
+/* Withheld until the last die stops, or there is no tension in the roll. */
+#tray .verdict.pending { opacity: 0; }
+
+/* Tumbling: dim and restless, so a settled die reads as decided. */
+.die.rolling {
+  color: var(--text-dim); border-color: var(--border);
+  animation: rollShake 150ms linear infinite;
+}
+@keyframes rollShake {
+  0%   { transform: translateY(0) rotate(-7deg); }
+  50%  { transform: translateY(-3px) rotate(7deg); }
+  100% { transform: translateY(0) rotate(-7deg); }
+}
+.die.settled { animation: dieLand 280ms var(--ease-out-expo); }
+@keyframes dieLand {
+  from { transform: scale(1.3) rotate(-9deg); }
+  to   { transform: none; }
 }
 
 /* A unit that falls leaves a ghost where it stood */
@@ -339,6 +380,71 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 }
 .btn:hover { border-color: var(--amber-dim); }
 
+/* ============================================================
+   FEEDBACK
+   Hover and press deliberately avoid `transform` on .u: FLIP
+   owns that property during movement, and two things writing
+   the same property is how animation fights itself. Fill and
+   stroke carry the feedback instead.
+   ============================================================ */
+.u .base path { transition: fill-opacity 140ms var(--ease-out-quart), stroke-width 140ms var(--ease-out-quart); }
+.sq::after { transition: box-shadow 140ms var(--ease-out-quart); }
+
+@media (hover: hover) {
+  .sq:hover .u .base path { fill-opacity: 0.28; }
+  .sq.mv:hover, .sq.tg:hover { cursor: pointer; }
+  .sq.mv:hover::after { box-shadow: inset 0 0 0 3px var(--mv); }
+  .sq.tg:hover::after { box-shadow: inset 0 0 0 3px var(--tg); }
+  .sq:has(.u):hover { cursor: pointer; }
+}
+.sq:active .u .base path { fill-opacity: 0.4; transition-duration: 70ms; }
+
+/* The selection ring settles in rather than snapping on. */
+@keyframes ringIn { from { opacity: 0; transform: scale(1.22); } to { opacity: 1; transform: none; } }
+.u.is-sel .base { animation: ringIn 220ms var(--ease-out-expo); }
+
+/* ============================================================
+   OVERLAYS — backdrop fades, card rises. Exit is not animated:
+   dismissing should feel instant, and a card that lingers on
+   the way out reads as lag.
+   ============================================================ */
+@keyframes backdropIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cardIn { from { opacity: 0; transform: translateY(12px) scale(0.985); } to { opacity: 1; transform: none; } }
+#menu, #help, #tutorial, #muster, #curtain { animation: backdropIn 170ms var(--ease-out-quart); }
+#menu > *, #help > *, #tutorial > *, #muster > *, #curtain > * {
+  animation: cardIn 280ms var(--ease-out-expo) backwards;
+  animation-delay: 55ms;
+}
+#deploybar { animation: cardIn 300ms var(--ease-out-expo) backwards; }
+
+/* ============================================================
+   TURN ANNOUNCEMENT
+   The audience has never seen this game. Whose turn it is has
+   to be unmissable, so it is said over the board once per turn
+   and then gets out of the way.
+   ============================================================ */
+#turnbar {
+  position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%);
+  z-index: 30; pointer-events: none;
+  padding: 6px 18px; border: 1px solid var(--border); border-top: 3px double var(--border);
+  background: var(--bg); letter-spacing: 0.18em; text-transform: uppercase;
+  animation: turnSweep 1150ms var(--ease-out-quart) forwards;
+}
+@keyframes turnSweep {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.94); }
+  14%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  72%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.02); }
+}
+
+/* An action spent: the pips acknowledge the cost. */
+@keyframes spend {
+  from { opacity: 0.3; transform: scale(1.18); }
+  to   { opacity: 1; transform: none; }
+}
+.acts { display: inline-block; }          /* transformable without reflowing the HUD */
+.acts.spent { animation: spend 260ms var(--ease-out-expo); }
+
 /* HUD & status */
 #hud-state { display: flex; align-items: center; gap: 12px; }
 .side.s0 { color: var(--pale); }
@@ -383,6 +489,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   body::before, body::after { display: none; }
   .ghost { display: none !important; }
+  #turnbar { display: none !important; }
 }
 </style>
 </head>
@@ -1519,13 +1626,40 @@ function renderBoard() {
       if (moves.has(k)) cls.push("mv");
       if (targets.has(k)) cls.push("tg");
       const label = u ? esc(unitAria(u)) : `${squareName(c, r)}, empty`;
+      /* Distance from the selected unit, so the highlight blooms OUTWARD from
+         it rather than appearing all at once. For a rider that draws the lane
+         as far as it reaches; for an Archer the block opens out of the bow.
+         The player has never read the rulebook -- this is where the reach of
+         a unit gets explained. */
+      const d = sel && sel.alive ? Math.max(Math.abs(c - sel.c), Math.abs(r - sel.r)) : 0;
       html += `<div class="${cls.join(" ")}" role="gridcell" data-c="${c}" data-r="${r}"
-        tabindex="${UI.cur === k ? 0 : -1}" aria-label="${label}">${u ? renderUnit(u) : ""}</div>`;
+        style="--d:${d}" tabindex="${UI.cur === k ? 0 : -1}" aria-label="${label}">${u ? renderUnit(u) : ""}</div>`;
     }
   }
   const g = document.getElementById("grid");
   g.style.gridTemplateColumns = `repeat(${W}, var(--sq))`;
   g.innerHTML = html;
+
+  /* Bloom only when the selection actually changed. Re-blooming on every
+     render would make the board restless during play. */
+  if (UI.sel !== UI.lastSel) { UI.bloom = true; UI.lastSel = UI.sel; }
+  g.classList.toggle("is-blooming", !!UI.bloom && !UI.reducedMotion);
+  UI.bloom = false;
+
+  /* The armies march on once, when a game begins. */
+  if (UI.entering && !UI.reducedMotion) {
+    g.classList.add("is-entering");
+    [...g.querySelectorAll(".u")].forEach(el => {
+      const uu = byUid(G, +el.dataset.uid);
+      if (!uu) return;
+      /* Stagger from each army's own back row forward, so the two lines
+         arrive from opposite edges and the gap between them reads. */
+      const rank = uu.side === 0 ? (H - 1 - uu.r) : uu.r;
+      el.style.setProperty("--e", rank * 2 + Math.abs(uu.c - 4));
+    });
+    setTimeout(() => g.classList.remove("is-entering"), 1400);
+    UI.entering = false;
+  }
 }
 
 function syncPrefsChrome() {
@@ -1558,6 +1692,24 @@ function renderHUD() {
   document.getElementById("hud-state").innerHTML =
     `<span class="side s${G.turn}">${who}</span> ${G.gameOver ? "" : pips}
      <span class="rnd">Round ${G.round}</span>`;
+}
+
+/* Said once per turn, over the board, then gone. */
+function announceTurn() {
+  const wrap = document.getElementById("board-wrap");
+  if (!wrap) return;
+  const key = G.phase === "play" && !G.gameOver ? `${G.turn}:${G.round}` : null;
+  if (key === UI.lastTurnKey) return;
+  UI.lastTurnKey = key;
+  const old = document.getElementById("turnbar");
+  if (old) old.remove();
+  if (!key || UI.reducedMotion) return;
+  const el = document.createElement("div");
+  el.id = "turnbar";
+  el.className = `side s${G.turn}`;
+  el.textContent = `${G.players[G.turn].name} to act`;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 1200);
 }
 
 function renderStatus() {
@@ -1615,6 +1767,7 @@ function updateAll() {
   snapshotRects();
   renderBoard();
   playFlip();
+  announceTurn();
   renderTray();
   renderHUD();
   renderStatus();
@@ -1655,8 +1808,8 @@ function attackEvents(res) {
 
   const ev = [
     { type: "sfx", name: "dice" },
-    { type: "render" },                    /* the tray shows the faces */
-    { type: "wait", delay: 420 },          /* read them */
+    { type: "render" },                    /* the tray paints the final faces */
+    { type: "roll" },                      /* ...then tumbles them into view */
     { type: "log", text: parts.join(" ") },
   ];
   if (res.removed) ev.push({ type: "sfx", name: res.killed ? "kill" : "hit" });
@@ -1678,6 +1831,52 @@ function attackEvents(res) {
   return ev;
 }
 
+/* ============================================================
+   THE ROLL
+   The outcome is already decided before anything is drawn, so
+   the tumble is pure theatre -- which is the point. Dice settle
+   one at a time and the verdict is withheld until the last one
+   lands, so a Knight needing two axes is genuinely in doubt
+   until the second die stops.
+
+   The tumbling faces use Math.random(), never rnd(): they are
+   flavour, and drawing them from the seeded stream would make a
+   saved game replay differently depending on how long you
+   watched the dice.
+   ============================================================ */
+function tumbleDice(done) {
+  const dice = [...document.querySelectorAll("#tray .die")];
+  const sf = UI.speedFactor == null ? 1 : UI.speedFactor;
+  if (!dice.length || UI.reducedMotion || UI.headless || sf === 0) { done(); return; }
+
+  const verdict = document.querySelector("#tray .verdict");
+  if (verdict) verdict.classList.add("pending");
+  const finals = dice.map(d => d.innerHTML);
+  const glyphs = [DIE_GLYPH[AXE], DIE_GLYPH[ARROW], DIE_GLYPH[PANIC]];
+
+  dice.forEach((die, i) => {
+    die.classList.add("rolling");
+    die.setAttribute("aria-busy", "true");
+    const spin = setInterval(() => {
+      const g = glyphs[Math.floor(Math.random() * 3)];   // flavour only, never rules
+      die.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${g}"/></svg>`;
+    }, Math.max(42, 58 * sf));
+
+    setTimeout(() => {
+      clearInterval(spin);
+      die.innerHTML = finals[i];
+      die.classList.remove("rolling");
+      die.removeAttribute("aria-busy");
+      die.classList.add("settled");
+      sfx("tick");
+      if (i === dice.length - 1) {
+        if (verdict) verdict.classList.remove("pending");
+        setTimeout(done, 240 * sf);
+      }
+    }, (360 + i * 200) * sf);
+  });
+}
+
 function processEventQueue() {
   const q = UI.eventQueue;
   const nextEvent = () => {
@@ -1685,6 +1884,7 @@ function processEventQueue() {
     const e = q.shift();
     if (e.type === "log") { log(e.text); nextEvent(); return; }
     if (e.type === "sfx") { sfx(e.name); nextEvent(); return; }
+    if (e.type === "roll") { tumbleDice(nextEvent); return; }
     if (e.type === "render") { updateAll(); nextEvent(); return; }
     if (e.type === "callback") { UI.animating = false; e.fn(); return; }
     if (e.type === "wait") {
@@ -1988,6 +2188,7 @@ function toggleHelp() {
 
 function startGame(seed, opts) {
   UI.rects = null;                      /* no FLIP continuity across games */
+  UI.entering = true; UI.lastSel = null; UI.lastActions = null; UI.lastTurnKey = null;
   for (const g of document.querySelectorAll(".ghost")) g.remove();
   newGame(seed == null ? Math.floor(Math.random() * 1e9) : seed, opts);
   Object.assign(G.cfg, opts || {});
@@ -2695,6 +2896,7 @@ const SFX = {
   move:   () => tone(300, 0.07, "triangle", 0.05),
   turn:   () => tone(220, 0.05, "square", 0.03),
   dice:   () => { clatter(0.16, 0.06); clatter(0.12, 0.04, 0.07); },
+  tick:   () => { clatter(0.05, 0.05); tone(760, 0.035, "square", 0.025); },
   hit:    () => { tone(180, 0.09, "sawtooth", 0.07); clatter(0.07, 0.05); },
   kill:   () => { tone(140, 0.22, "sawtooth", 0.08); tone(70, 0.3, "square", 0.05, 0.05); },
   panic:  () => { tone(420, 0.1, "sine", 0.05); tone(300, 0.12, "sine", 0.05, 0.08); tone(200, 0.16, "sine", 0.05, 0.17); },
@@ -3859,6 +4061,7 @@ const UI = {
   musterOpen: false, musterSide: 0, muster: null, musterSpecs: null, pendingOpponent: "ai",
   muted: false, speed: 1, rects: null,
   menuOpen: false, helpOpen: false, tutorialOpen: false, tutorialStep: 0,
+  bloom: false, lastSel: null, entering: false, lastActions: null, lastTurnKey: null,
   pendingSkill: 1, houseRules: null,
   menu: { opponent: "ai", skill: "1", house: {} },
 };
