@@ -184,6 +184,25 @@ body::after {
    before "you can hit that". */
 #grid.is-blooming .sq.tg::after { animation-delay: calc(var(--d, 0) * 42ms + 90ms); }
 
+/* THE CALL-OUT. An attack the player did not order is the one moment where
+   the dice arrive with no idea who threw them, so the board says so first:
+   the attacker rings in its own colour, its reach washes in exactly as a
+   selected unit's would -- an Archer's block over friendly heads especially
+   -- and the unit about to be hit rings red and pulses. The plain .tg ring
+   cannot carry this on its own: during your own turn it means "you could hit
+   this", and here it has to mean "this is being hit, now". */
+@keyframes aimPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.sq.aim-atk.aim-s0::after { box-shadow: inset 0 0 0 3px var(--army-green); }
+.sq.aim-atk.aim-s1::after { box-shadow: inset 0 0 0 3px var(--army-gold); }
+.sq.aim-def::after { box-shadow: inset 0 0 0 3px var(--tg), 0 0 9px var(--tg); }
+.sq.aim-atk::after, .sq.aim-def::after {
+  animation: aimPulse var(--aim-ms, 520ms) var(--ease-out-quart) infinite;
+}
+/* The pulse is the whole point of the beat, so it outranks the bloom that
+   would otherwise fade these two squares in and then stop. */
+#grid.is-blooming .sq.aim-atk::after,
+#grid.is-blooming .sq.aim-def::after { animation-delay: 0s; }
+
 /* The armies march on. Opacity and transform only. */
 @keyframes marchIn {
   from { opacity: 0; transform: translateY(var(--march, 0)) scale(0.88); }
@@ -1767,12 +1786,18 @@ function rotateHandles(u) {
 function renderBoard() {
   const grid = buildGrid(G);
   const sel = UI.sel ? byUid(G, UI.sel) : null;
+  /* During a call-out the attacker leads the highlights in the selection's
+     place -- its reach, but never its moves: rings saying "it could have
+     gone there" are noise at the moment it is swinging. */
+  const aimAtk = UI.aim ? byUid(G, UI.aim.atk) : null;
+  const aimDef = UI.aim ? byUid(G, UI.aim.def) : null;
+  const lead = sel && sel.alive ? sel : (aimAtk && aimAtk.alive ? aimAtk : null);
   const moves = new Set(), targets = new Set(), zone = new Set();
-  if (sel && sel.alive) {
-    for (const m of moveSquares(G, grid, sel)) moves.add(idx(m.c, m.r));
-    for (const t of attackTargets(G, grid, sel)) targets.add(idx(t.c, t.r));
-    if (sel.type === "archer" || defOf(sel).allAdjacent) {
-      for (const s of attackZone(sel)) zone.add(idx(s.c, s.r));
+  if (lead) {
+    if (lead === sel) for (const m of moveSquares(G, grid, lead)) moves.add(idx(m.c, m.r));
+    for (const t of attackTargets(G, grid, lead)) targets.add(idx(t.c, t.r));
+    if (lead.type === "archer" || defOf(lead).allAdjacent) {
+      for (const s of attackZone(lead)) zone.add(idx(s.c, s.r));
     }
   }
 
@@ -1789,24 +1814,33 @@ function renderBoard() {
       if (zone.has(k)) cls.push("zone");
       if (moves.has(k)) cls.push("mv");
       if (targets.has(k)) cls.push("tg");
+      if (aimAtk && aimAtk.alive && aimAtk.c === c && aimAtk.r === r) {
+        cls.push("aim-atk", "aim-s" + aimAtk.side);
+      }
+      if (aimDef && aimDef.alive && aimDef.c === c && aimDef.r === r) cls.push("aim-def");
       const label = u ? esc(unitAria(u)) : `${squareName(c, r)}, empty`;
       /* Distance from the selected unit, so the highlight blooms OUTWARD from
          it rather than appearing all at once. For a rider that draws the lane
          as far as it reaches; for an Archer the block opens out of the bow.
          The player has never read the rulebook -- this is where the reach of
          a unit gets explained. */
-      const d = sel && sel.alive ? Math.max(Math.abs(c - sel.c), Math.abs(r - sel.r)) : 0;
+      const d = lead ? Math.max(Math.abs(c - lead.c), Math.abs(r - lead.r)) : 0;
       html += `<div class="${cls.join(" ")}" role="gridcell" data-c="${c}" data-r="${r}"
         style="--d:${d}" tabindex="${UI.cur === k ? 0 : -1}" aria-label="${label}">${u ? renderUnit(u) : ""}</div>`;
     }
   }
   const g = document.getElementById("grid");
   g.style.gridTemplateColumns = `repeat(${W}, var(--sq))`;
+  g.style.setProperty("--aim-ms",
+    Math.round(AIM_MS * (UI.speedFactor == null ? 1 : UI.speedFactor)) + "ms");
   g.innerHTML = html;
 
   /* Bloom only when the selection actually changed. Re-blooming on every
      render would make the board restless during play. */
-  if (UI.sel !== UI.lastSel) { UI.bloom = true; UI.lastSel = UI.sel; }
+  /* Keyed on whatever is leading the highlights, so a call-out blooms its
+     reach outward the way a selection does. */
+  const leadKey = UI.sel != null ? "s" + UI.sel : (UI.aim ? "a" + UI.aim.atk : null);
+  if (leadKey !== UI.lastSel) { UI.bloom = true; UI.lastSel = leadKey; }
   g.classList.toggle("is-blooming", !!UI.bloom && !UI.reducedMotion);
   UI.bloom = false;
 
@@ -1877,7 +1911,9 @@ function announceTurn() {
 }
 
 function renderStatus() {
-  const u = UI.sel ? byUid(G, UI.sel) : null;
+  /* The call-out puts the attacker in the panel too: how many dice are about
+     to be thrown is the thing the player most wants before they land. */
+  const u = UI.sel ? byUid(G, UI.sel) : (UI.aim ? byUid(G, UI.aim.atk) : null);
   const el = document.getElementById("status-body");
   if (!u || !u.alive) { el.innerHTML = `<p class="dim">No unit selected.</p>`; return; }
   const d = defOf(u);
@@ -1977,6 +2013,11 @@ function restoreFocus() {
    by the time these run. Reduced motion skips the queue
    entirely rather than merely disabling CSS transitions.
    ============================================================ */
+/* Long enough to find the two squares, short enough that a game against the
+   AI does not turn into a slideshow. The pulse is told the same number so it
+   gets one full cycle whatever the speed setting. */
+const AIM_MS = 520;
+
 function attackEvents(res) {
   const atk = byUid(G, res.atkUid), def = byUid(G, res.defUid);
   const parts = [`${G.players[atk.side].name} ${defOf(atk).name} attacks`,
@@ -1989,12 +2030,16 @@ function attackEvents(res) {
   /* The cut-in runs FIRST, while the board still shows the position as it was
      when the dice were thrown. Only once the outcome has been read does the
      board re-render and take the casualty off. */
-  const ev = [
+  const ev = [];
+  /* An attack the player ordered needs no announcement -- they just clicked
+     the target. One the AI ordered does: without it the dice arrive over a
+     board that gives no clue which of ten bases threw them. */
+  if (!isHuman(atk.side)) ev.push({ type: "aim", atk: res.atkUid, def: res.defUid });
+  ev.push(
     { type: "sfx", name: "dice" },
     { type: "combat", res },
     { type: "render" },
-    { type: "log", text: parts.join(" ") },
-  ];
+    { type: "log", text: parts.join(" ") });
   if (res.removed) ev.push({ type: "sfx", name: res.killed ? "kill" : "hit" });
   if (res.retreats && res.retreats.length) {
     ev.push({ type: "sfx", name: "panic" });
@@ -2022,7 +2067,15 @@ function processEventQueue() {
     if (e.type === "log") { log(e.text); nextEvent(); return; }
     if (e.type === "sfx") { sfx(e.name); nextEvent(); return; }
     if (e.type === "combat") { showCombat(e.res, nextEvent); return; }
-    if (e.type === "render") { updateAll(); nextEvent(); return; }
+    if (e.type === "render") { UI.aim = null; updateAll(); nextEvent(); return; }
+    if (e.type === "aim") {
+      /* Held through the dice as well, so the board behind the cut-in still
+         shows who is fighting whom. Cleared by the render that follows. */
+      UI.aim = { atk: e.atk, def: e.def };
+      updateAll();
+      setTimeout(nextEvent, AIM_MS * (UI.speedFactor == null ? 1 : UI.speedFactor));
+      return;
+    }
     if (e.type === "callback") { UI.animating = false; e.fn(); return; }
     if (e.type === "wait") {
       setTimeout(nextEvent, e.delay * (UI.speedFactor == null ? 1 : UI.speedFactor));
@@ -2365,6 +2418,7 @@ function toggleHelp() {
 function startGame(seed, opts) {
   UI.rects = null;                      /* no FLIP continuity across games */
   UI.entering = true; UI.lastSel = null; UI.lastActions = null; UI.lastTurnKey = null;
+  UI.aim = null;
   for (const g of document.querySelectorAll(".ghost")) g.remove();
   newGame(seed == null ? Math.floor(Math.random() * 1e9) : seed, opts);
   Object.assign(G.cfg, opts || {});
@@ -3445,6 +3499,24 @@ const SHOTS = {
     log("An Archer looses over its own front rank.");
   },
 
+  /* The beat before the dice, when the AI attacks: who is swinging, what
+     their reach is, and which base is about to be hit. */
+  aim() {
+    newGame(7, { setup: "basic", opponent: "ai" });
+    G.players[1].isBot = true;
+    const ar = G.units.find(u => u.side === 1 && u.type === "archer");
+    ar.c = 4; ar.r = 2; ar.face = S;
+    const screen = G.units.find(u => u.side === 1 && u.type === "infantry");
+    screen.c = 4; screen.r = 3;
+    const foe = G.units.find(u => u.side === 0 && u.type === "infantry");
+    foe.c = 4; foe.r = 4;
+    const foe2 = G.units.find(u => u.side === 0 && u.type === "infantry" && u !== foe);
+    foe2.c = 3; foe2.r = 5;
+    G.turn = 1;
+    UI.aim = { atk: ar.uid, def: foe.uid };
+    log("Gold Archer takes aim.");
+  },
+
   /* The cut-in, held at the instant the last die stops. */
   combat() {
     newGame(7, { setup: "basic" });
@@ -3507,7 +3579,7 @@ function runShot(name) {
   if (cb) { cb.hidden = true; cb.innerHTML = ""; }
   UI.musterOpen = false; UI.menuOpen = false; UI.helpOpen = false;
   UI.tutorialOpen = false; UI.curtain = false; UI.curtainThen = null;
-  UI.sel = null; UI.cur = null; UI.rects = null;
+  UI.sel = null; UI.cur = null; UI.rects = null; UI.aim = null;
   UI.eventQueue = []; UI.animating = false; UI.advancing = false;
   try { localStorage.setItem(TUTORIAL_KEY, "1"); } catch (e) {}
   UI.headless = false;
@@ -4393,7 +4465,7 @@ const UI = {
   eventQueue: [], animating: false, advancing: false, needAdvance: false,
   curtain: false, curtainThen: null, speedFactor: 1, undo: [], help: false,
   musterOpen: false, musterSide: 0, muster: null, musterSpecs: null, pendingOpponent: "ai",
-  muted: false, speed: 1, rects: null, rotLock: null, rotLockTimer: null,
+  muted: false, speed: 1, rects: null, rotLock: null, rotLockTimer: null, aim: null,
   menuOpen: false, helpOpen: false, tutorialOpen: false, tutorialStep: 0,
   bloom: false, lastSel: null, entering: false, lastActions: null, lastTurnKey: null,
   pendingSkill: 1, houseRules: null,
