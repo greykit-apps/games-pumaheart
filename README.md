@@ -39,7 +39,8 @@ full view: the dice tumble and settle one at a time, and the outcome is withheld
 one stops, and the board keeps the defeated base until the card has cleared, so you watch it go
 rather than find it gone. When the AI attacks, the board calls the shot first — the attacker
 rings in its own colour, its reach washes in, and the base about to be hit pulses red — so the
-dice never arrive without saying who threw them.
+dice never arrive without saying who threw them. The field report keeps each attack as its four
+faces and what the roll cost.
 
 **PANIC is what makes the game.** If every die comes up PANIC the unit turns about and retreats
 a square, shoving whoever is behind it into panicking too. A retreat blocked by the board edge,

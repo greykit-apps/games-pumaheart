@@ -146,6 +146,20 @@ body::after {
 
 #log-list { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
 #log-list li { padding: 2px 0; border-bottom: 1px solid var(--panel-2); color: var(--text-dim); }
+/* An attack is two lines: who swung at what, then the roll and what it cost.
+   Dice at log scale carry no border -- four boxed glyphs in a narrow column
+   read as a row of buttons, and the field report is a record, not a control. */
+#log-list li.log-attack { padding: 5px 0 6px; }
+.log-who, .log-roll { margin: 0; }
+.log-roll { display: flex; align-items: center; gap: 3px; margin-top: 3px; }
+.logdie { width: 15px; height: 15px; flex: none; color: var(--text-dim); }
+.logdie svg { width: 100%; height: 100%; display: block; }
+.logdie svg path { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.logdie.f-axe.scores, .logdie.f-arrow.scores { color: var(--green); }
+.logdie.f-panic { color: var(--red); }
+.log-sum { margin-left: 5px; white-space: nowrap; }
+.sum-bad { color: var(--red); }
+.sum-note { color: var(--text-dim); }
 
 /* ============================================================
    BOARD & UNITS
@@ -1041,6 +1055,12 @@ function needsLastManDuel(atk, def) {
 function resolveAttack(P, grid, atk, def) {
   const ad = defOf(atk);
   const res = { atkUid: atk.uid, defUid: def.uid, faces: [], hits: 0, removed: 0,
+                /* What was standing on the base when the dice were thrown.
+                   `removed` is the uncapped floor(hits / htk) and the rules
+                   want it that way -- four axes on a King is two hits' worth
+                   whether or not there are two figures to take them -- but a
+                   report saying "2 lost" off a one-figure base is a lie. */
+                defFigs: def.figs,
                 panicSteps: 0, duel: false, victimRetreat: 0, killed: false,
                 /* An ordered record of the cascade, so the presentation can
                    replay it as a chain rather than a single jump. Pure data:
@@ -1534,6 +1554,7 @@ function animate(events) {
   if (UI.reducedMotion) {
     for (const e of events) {
       if (e.type === "log") log(e.text);
+      else if (e.type === "logAttack") logAttack(e.res, e.say);
       else if (e.type === "sfx") sfx(e.name);
     }
     return NEXT;
@@ -1966,10 +1987,10 @@ function renderCurtain() {
   </div>`;
 }
 
-/* "Green Archer attacks Gold Infantry" reads far faster when the two are
-   coloured. Built from the army and unit names rather than hard-coded, so it
-   follows a rename, and applied at RENDER time -- G.log stays plain strings
-   and keeps round-tripping through JSON. */
+/* "Green Archer advances to e4" reads far faster when the army is coloured.
+   Built from the army and unit names rather than hard-coded, so it follows a
+   rename, and applied at RENDER time -- a log entry stays plain data and
+   keeps round-tripping through JSON. */
 function colourNames(escaped) {
   const armies = G.players.map(p => p.name).join("|");
   /* Longest unit name first, so "Heavy Infantry" wins over "Infantry". */
@@ -1982,15 +2003,75 @@ function colourNames(escaped) {
   });
 }
 
+/* An attack is the one entry that is not a sentence. It is a roll, and a
+   roll reads far faster as four faces than as the words "arrows, battle-axe,
+   battle-axe, PANIC" -- so it is stored as data and drawn as dice.
+
+   Only the attacker carries its army. Naming the defender's side as well was
+   redundant twice over: there are two armies, and the attacker's colour
+   already says which one is swinging. */
+function attackEntryHTML(e) {
+  const atk = byUid(G, e.atk), def = byUid(G, e.def);
+  if (!atk || !def) return esc(e.say || "");
+  /* Scoring faces go green here exactly as they do in the dice tray, so the
+     summary can be traced back to the dice that produced it. A total panic
+     scores nothing, whatever the other faces say. */
+  const hitFace = defOf(atk).hitFace;
+  const dice = e.faces.map(f => {
+    const scores = !e.panic &&
+      (hitFace === null ? (f === AXE || f === ARROW) : f === hitFace);
+    return `<span class="logdie ${DIE_CLASS[f]}${scores ? " scores" : ""}"
+      role="img" aria-label="${DIE_NAME[f]}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>`;
+  }).join("");
+
+  /* Red is the token for harm and nothing else, so it marks the figures that
+     came off -- whichever side they came off. A Peasant can lose figures for
+     its target AND panic itself on the same roll, which is why this is built
+     from parts rather than picked from a list. */
+  const bits = [];
+  if (e.lost) bits.push(`<span class="sum-bad">\u2212${e.lost}</span>`);
+  if (e.killed) bits.push(`<span class="sum-note">destroyed</span>`);
+  if (e.panic) bits.push(`<span class="sum-bad">PANIC</span>`);
+  if (!bits.length) bits.push(`<span class="sum-note">\u2014</span>`);
+
+  return `<p class="log-who"><span class="side s${atk.side}">${esc(G.players[atk.side].name)} ${esc(defOf(atk).name)}</span>`
+       + ` <span class="dim">attacks</span> ${esc(defOf(def).name)}</p>`
+       + `<p class="log-roll">${dice}<span class="log-sum" role="img"`
+       + ` aria-label="${esc(summaryAria(e))}">${bits.join(" ")}</span></p>`;
+}
+
+function summaryAria(e) {
+  const out = [];
+  if (e.lost) out.push(`${e.lost} ${e.lost === 1 ? "figure" : "figures"} lost`);
+  if (e.killed) out.push("base destroyed");
+  if (e.panic) out.push("PANIC");
+  return out.length ? out.join(", ") : "no effect";
+}
+
 function renderLog() {
   document.getElementById("log-list").innerHTML =
-    G.log.slice(-40).reverse().map(l => `<li>${colourNames(esc(l))}</li>`).join("");
+    G.log.slice(-40).reverse().map(l =>
+      typeof l === "string" ? `<li>${colourNames(esc(l))}</li>`
+                            : `<li class="log-attack">${attackEntryHTML(l)}</li>`).join("");
 }
 
 function log(msg) {
   G.log.push(msg);
   if (G.log.length > 200) G.log.shift();
   announce(msg);
+}
+
+/* The structured entry. `say` is the same line in words, for the screen
+   reader and for any entry whose units have since left G. */
+function logAttack(res, say) {
+  G.log.push({
+    atk: res.atkUid, def: res.defUid, faces: res.faces.slice(),
+    lost: figuresLost(res), killed: !!res.killed,
+    panic: !!res.panicSteps, say: say,
+  });
+  if (G.log.length > 200) G.log.shift();
+  announce(say);
 }
 
 /* Screen-reader commentary only. Action counts and cursor feedback matter
@@ -2059,15 +2140,23 @@ function renderAs(snapshot) {
   try { updateAll(); } finally { G = live; }
 }
 
-function attackEvents(res) {
+/* The attack in words. The field report draws dice instead, but a screen
+   reader cannot read a glyph, so this is what gets announced -- and it names
+   BOTH armies, because without colour there is nothing else to tell them
+   apart. */
+function attackSentence(res) {
   const atk = byUid(G, res.atkUid), def = byUid(G, res.defUid);
   const parts = [`${G.players[atk.side].name} ${defOf(atk).name} attacks`,
                  `${G.players[def.side].name} ${defOf(def).name}`,
                  `\u2014 ${res.faces.map(f => DIE_NAME[f]).join(", ")}`];
   if (res.panicSteps && !defOf(atk).panicPerDie) parts.push("\u2014 PANIC!");
-  else if (res.removed) parts.push(`\u2014 ${res.removed} lost`);
+  else if (res.removed) parts.push(`\u2014 ${figuresLost(res)} lost`);
   else parts.push("\u2014 no effect");
+  return parts.join(" ");
+}
 
+function attackEvents(res) {
+  const atk = byUid(G, res.atkUid), def = byUid(G, res.defUid);
   /* The cut-in runs FIRST, while the board still shows the position as it was
      when the dice were thrown. Only once the outcome has been read does the
      board re-render and take the casualty off. */
@@ -2081,7 +2170,7 @@ function attackEvents(res) {
     { type: "combat", res },
     { type: "wait", delay: SETTLE_MS },
     { type: "render" },
-    { type: "log", text: parts.join(" ") });
+    { type: "logAttack", res: res, say: attackSentence(res) });
   if (res.removed) ev.push({ type: "sfx", name: res.killed ? "kill" : "hit" });
   if (res.retreats && res.retreats.length) {
     ev.push({ type: "sfx", name: "panic" });
@@ -2107,6 +2196,7 @@ function processEventQueue() {
     if (!q.length) { UI.animating = false; return; }
     const e = q.shift();
     if (e.type === "log") { log(e.text); nextEvent(); return; }
+    if (e.type === "logAttack") { logAttack(e.res, e.say); nextEvent(); return; }
     if (e.type === "sfx") { sfx(e.name); nextEvent(); return; }
     if (e.type === "combat") { showCombat(e.res, nextEvent); return; }
     /* The one render that is allowed to take the casualty off, and the only
@@ -3055,7 +3145,7 @@ function renderTray() {
   }).join("");
   const verdict = d.panicSteps && !defOf(atk).panicPerDie ? "PANIC — the unit breaks"
     : d.killed ? `${esc(defOf(def).name)} base destroyed`
-    : d.removed ? `${d.removed} ${d.removed === 1 ? "figure" : "figures"} lost`
+    : d.removed ? `${figuresLost(d)} ${figuresLost(d) === 1 ? "figure" : "figures"} lost`
     : "no effect";
   const duelNote = d.duel ? " <span class='dim'>(single figure, two hits needed)</span>" : "";
   el.innerHTML = `<div class="dice-row">${faces}</div>
@@ -3476,6 +3566,9 @@ function botStep(side, skill) {
     const g2 = buildGrid(G);
     if (!legalActions(G, g2, G.turn).some(x => sameAction(x, a))) break;
     applyAction(G, a);
+    /* The shot harness bypasses doAction, so nothing else would record the
+       fighting -- which left #shot=midgame with an empty field report. */
+    if (a.kind === "attack" && G.dice) logAttack(G.dice, attackSentence(G.dice));
     const v = checkVictory(G);
     if (v) { G.result = v; G.gameOver = true; return true; }
   }
@@ -3765,12 +3858,20 @@ function renderDeployBar() {
    is what the code did until now, removed the casualty before
    showing the roll that killed it.
    ============================================================ */
+/* Never more than were there to lose. Old saves predate defFigs, so the
+   uncapped count stands in rather than reporting zero. */
+function figuresLost(res) {
+  if (!res.removed) return 0;
+  return res.defFigs == null ? res.removed : Math.min(res.removed, res.defFigs);
+}
+
 function combatOutcome(res) {
   const atk = byUid(G, res.atkUid), def = byUid(G, res.defUid);
   const ad = defOf(atk), dd = defOf(def);
   if (res.panicSteps && !ad.panicPerDie) return { text: "PANIC — the unit breaks", tone: "bad" };
   if (res.killed) return { text: `${dd.name} base destroyed`, tone: "kill" };
-  if (res.removed) return { text: `${res.removed} ${res.removed === 1 ? "figure" : "figures"} lost`, tone: "hit" };
+  const lost = figuresLost(res);
+  if (lost) return { text: `${lost} ${lost === 1 ? "figure" : "figures"} lost`, tone: "hit" };
   return { text: "No effect", tone: "none" };
 }
 
