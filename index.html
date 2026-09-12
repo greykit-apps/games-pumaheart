@@ -3227,8 +3227,12 @@ const OPENINGS = [
     back: MISSILE_HORSE, backCols: LEFT_HALF, frontCols: LEFT_HALF, kingCol: 2 },
 
   { key: "vanguard", grade: 2, name: "Vanguard",
-    note: "Horse alone in front, the host massed behind it. Contact comes early, and on your terms.",
-    back: ["archer"].concat(FOOT), front: ["knight"],
+    note: "Horse and shields forward together, the rest massed behind. Contact comes early, and on your terms.",
+    /* Horse ALONE was the first cut, and a muster that rolled one Knight base
+       put a single rider out in front of the army to die. The shock units
+       lead as a group instead, so the shape holds however the horse came
+       out: every bot muster fields two or three bases here. */
+    back: ["archer", "infantry", "peasant", "mercenary"], front: ["knight", "heavy"],
     backCols: CENTRE_OUT, frontCols: CENTRE_OUT, kingCol: 4 },
 
   { key: "forward", grade: 2, name: "Everything forward",
