@@ -1524,7 +1524,20 @@ function go(phase, step) { G.phase = phase; G.step = step; }
 function isHuman(side) { return !G.players[side].isBot && !UI.autoHuman; }
 
 function animate(events) {
-  if (UI.headless || UI.reducedMotion) return NEXT;
+  if (UI.headless) return NEXT;
+  /* Reduced motion skips the MOTION, not the content. Returning here without
+     playing the queue left the field report with every move and turn in it
+     and not one attack -- the whole combat record, and the casualty sounds
+     with it, dropped for exactly the players least able to follow the board.
+     The timed events (the call-out, the cut-in, the waits) are what get
+     skipped; log and sound land at once. */
+  if (UI.reducedMotion) {
+    for (const e of events) {
+      if (e.type === "log") log(e.text);
+      else if (e.type === "sfx") sfx(e.name);
+    }
+    return NEXT;
+  }
   UI.eventQueue = events.concat([{ type: "callback", fn: advance }]);
   UI.animating = true;
   processEventQueue();
@@ -1571,9 +1584,11 @@ const STEP = {
     },
 
     /* Entered by doAction for an attack. The state is already final here:
-       this step is presentation and bookkeeping only. */
+       this step is presentation and bookkeeping only -- including when the
+       attack ended the game, which is why the destination is read off
+       G.gameOver rather than assumed. */
     resolve() {
-      go("play", "act");
+      if (G.gameOver) go("gameover", "done"); else go("play", "act");
       return animate(attackEvents(G.dice));
     },
 
@@ -1623,10 +1638,18 @@ function doAction(a) {
     sfx("select");
   }
 
+  /* G is final the instant applyAction returns -- the casualty is already
+     off it. The presentation has to show the board as it stood when the dice
+     were thrown, so it keeps a copy of that board to render from. */
+  if (a.kind === "attack" && !UI.headless && !UI.reducedMotion) UI.preAttack = clone(G);
+
   applyAction(G, a);
   const v = checkVictory(G);
   if (v) { G.result = v; G.gameOver = true; }
-  if (a.kind === "attack" && !G.gameOver) { go("play", "resolve"); return NEXT; }
+  /* Including the killing blow. Routing straight to gameover skipped the
+     cut-in entirely, so the one attack that decides the game was the one
+     nobody got to watch. */
+  if (a.kind === "attack") { go("play", "resolve"); return NEXT; }
   if (a.kind === "bribe" && !G.gameOver) { updateAll(); }
   if (G.gameOver) { go("gameover", "done"); return NEXT; }
   go("play", "act");
@@ -2018,6 +2041,24 @@ function restoreFocus() {
    gets one full cycle whatever the speed setting. */
 const AIM_MS = 520;
 
+/* The gap between the cut-in closing and the board catching up. Without it
+   the card and the casualty leave in the same frame, and the player never
+   sees the board with the base still on it -- which is the half of "it was
+   there, then it was not" that makes the removal read as a consequence
+   rather than an edit. */
+const SETTLE_MS = 260;
+
+/* Renders the board as it stood when the dice were thrown. G is final by the
+   time any of this runs, so the only honest way to hold the pre-attack
+   position on screen is to render a copy of it. Restored in a finally: an
+   exception mid-render must not leave the game pointing at a snapshot. */
+function renderAs(snapshot) {
+  if (!snapshot) { updateAll(); return; }
+  const live = G;
+  G = snapshot;
+  try { updateAll(); } finally { G = live; }
+}
+
 function attackEvents(res) {
   const atk = byUid(G, res.atkUid), def = byUid(G, res.defUid);
   const parts = [`${G.players[atk.side].name} ${defOf(atk).name} attacks`,
@@ -2038,6 +2079,7 @@ function attackEvents(res) {
   ev.push(
     { type: "sfx", name: "dice" },
     { type: "combat", res },
+    { type: "wait", delay: SETTLE_MS },
     { type: "render" },
     { type: "log", text: parts.join(" ") });
   if (res.removed) ev.push({ type: "sfx", name: res.killed ? "kill" : "hit" });
@@ -2067,12 +2109,18 @@ function processEventQueue() {
     if (e.type === "log") { log(e.text); nextEvent(); return; }
     if (e.type === "sfx") { sfx(e.name); nextEvent(); return; }
     if (e.type === "combat") { showCombat(e.res, nextEvent); return; }
-    if (e.type === "render") { UI.aim = null; updateAll(); nextEvent(); return; }
+    /* The one render that is allowed to take the casualty off, and the only
+       one in the sequence that draws the live G. */
+    if (e.type === "render") {
+      UI.aim = null; UI.preAttack = null;
+      updateAll(); nextEvent(); return;
+    }
     if (e.type === "aim") {
       /* Held through the dice as well, so the board behind the cut-in still
-         shows who is fighting whom. Cleared by the render that follows. */
+         shows who is fighting whom -- both of them, at full strength.
+         Cleared by the render that follows. */
       UI.aim = { atk: e.atk, def: e.def };
-      updateAll();
+      renderAs(UI.preAttack);
       setTimeout(nextEvent, AIM_MS * (UI.speedFactor == null ? 1 : UI.speedFactor));
       return;
     }
@@ -2418,7 +2466,7 @@ function toggleHelp() {
 function startGame(seed, opts) {
   UI.rects = null;                      /* no FLIP continuity across games */
   UI.entering = true; UI.lastSel = null; UI.lastActions = null; UI.lastTurnKey = null;
-  UI.aim = null;
+  UI.aim = null; UI.preAttack = null;
   for (const g of document.querySelectorAll(".ghost")) g.remove();
   newGame(seed == null ? Math.floor(Math.random() * 1e9) : seed, opts);
   Object.assign(G.cfg, opts || {});
@@ -3579,7 +3627,7 @@ function runShot(name) {
   if (cb) { cb.hidden = true; cb.innerHTML = ""; }
   UI.musterOpen = false; UI.menuOpen = false; UI.helpOpen = false;
   UI.tutorialOpen = false; UI.curtain = false; UI.curtainThen = null;
-  UI.sel = null; UI.cur = null; UI.rects = null; UI.aim = null;
+  UI.sel = null; UI.cur = null; UI.rects = null; UI.aim = null; UI.preAttack = null;
   UI.eventQueue = []; UI.animating = false; UI.advancing = false;
   try { localStorage.setItem(TUTORIAL_KEY, "1"); } catch (e) {}
   UI.headless = false;
@@ -4465,7 +4513,7 @@ const UI = {
   eventQueue: [], animating: false, advancing: false, needAdvance: false,
   curtain: false, curtainThen: null, speedFactor: 1, undo: [], help: false,
   musterOpen: false, musterSide: 0, muster: null, musterSpecs: null, pendingOpponent: "ai",
-  muted: false, speed: 1, rects: null, rotLock: null, rotLockTimer: null, aim: null,
+  muted: false, speed: 1, rects: null, rotLock: null, rotLockTimer: null, aim: null, preAttack: null,
   menuOpen: false, helpOpen: false, tutorialOpen: false, tutorialStep: 0,
   bloom: false, lastSel: null, entering: false, lastActions: null, lastTurnKey: null,
   pendingSkill: 1, houseRules: null,

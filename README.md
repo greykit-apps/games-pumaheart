@@ -36,9 +36,10 @@ Infantry pays two actions to move or turn, and one to attack.
 hit on arrows; Peasants score with whichever they rolled the most of. Knights, Kings and Heavy
 Infantry must take two hits in the *same* attack to lose a figure. Every attack is thrown in
 full view: the dice tumble and settle one at a time, and the outcome is withheld until the last
-one stops. When the AI attacks, the board calls the shot first — the attacker rings in its own
-colour, its reach washes in, and the base about to be hit pulses red — so the dice never arrive
-without saying who threw them.
+one stops, and the board keeps the defeated base until the card has cleared, so you watch it go
+rather than find it gone. When the AI attacks, the board calls the shot first — the attacker
+rings in its own colour, its reach washes in, and the base about to be hit pulses red — so the
+dice never arrive without saying who threw them.
 
 **PANIC is what makes the game.** If every die comes up PANIC the unit turns about and retreats
 a square, shoving whoever is behind it into panicking too. A retreat blocked by the board edge,
