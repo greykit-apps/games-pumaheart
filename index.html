@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PumaHeart — Medieval Grid Wargame</title>
+<meta name="description" content="A faithful port of Lionheart (1997). Two prides of puma warriors on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<meta property="og:title" content="PumaHeart">
+<meta property="og:description" content="A faithful port of Lionheart (1997). Two prides of puma warriors on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://greykit.com/games/pumaheart/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://greykit.com/games/pumaheart/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="PumaHeart">
+<meta name="twitter:image" content="https://greykit.com/games/pumaheart/og.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<style>
+/* ============================================================
+   TOKENS — cybersec-CRT tribe palette. The :root values are
+   byte-identical to the sibling games; everything PumaHeart
+   adds is a mapping onto them, never a new hue.
+   ============================================================ */
+:root {
+  --green: #00ff41;
+  --green-dim: #00cc33;
+  --green-dark: #009926;
+  --amber: #ffb000;
+  --amber-dim: #cc8800;
+  --red: #ff3333;
+  --red-dim: #cc2222;
+  --yellow: #ffdd33;
+  --blue: #6699ff;
+  --pink: #ff5fbf;
+  --cyan: #00cccc;
+  --white: #e8ffe8;
+  --bg: #0a0a0a;
+  --panel: #111;
+  --panel-2: #0d160d;
+  --border: #1a3a1a;
+  --text: #00ff41;
+  --text-dim: #00aa2a;
+  --font-mono: "Courier New", "Lucida Console", monospace;
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* --- PumaHeart mapping layer -------------------------------
+     Two prides sit at 14.50:1 and 10.81:1 against --bg, but only
+     1.34:1 against EACH OTHER: green and amber differ in hue, not
+     in brightness, which is the pair red-green colour blindness
+     confuses. Side is therefore also carried by glyph treatment
+     (side 0 filled, side 1 outlined), by the figure pips, and by
+     the aria-label. Never let colour be the only channel. */
+  --pale: var(--green);            /* side 0 */
+  --dun: var(--amber);             /* side 1 */
+  --sel: var(--white);             /* selection ring            */
+  --mv: var(--cyan);               /* legal move destination    */
+  --tg: var(--red);                /* legal attack target       */
+  --zone: rgba(255, 221, 51, 0.14);  /* an archer's 3x3 block   */
+  --lane: rgba(0, 204, 204, 0.12);   /* a mounted charge lane   */
+  --sq-light: #0d160d;
+  --sq-dark: #0a0f0a;
+  --deploy-pale: rgba(0, 255, 65, 0.07);   /* side 0 deployment ranks */
+  --deploy-dun: rgba(255, 176, 0, 0.07);   /* side 1 deployment ranks */
+
+  /* Floors at 32px so a 9-wide board fits a 380px viewport. */
+  --sq: clamp(32px, min(9vw, 7vh), 58px);
+}
+
+* { box-sizing: border-box; }
+:root { color-scheme: dark; }
+* { scrollbar-width: thin; scrollbar-color: #1a3a1a var(--bg); }
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track { background: var(--bg); }
+*::-webkit-scrollbar-thumb { background: #1a3a1a; border: 2px solid var(--bg); border-radius: 5px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--green-dark); }
+
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font-mono); font-size: 14px; line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* The CRT overlay is the tribe signature. Reduced motion kills it. */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 9000; pointer-events: none;
+  background: repeating-linear-gradient(0deg,
+    rgba(0,0,0,0.18) 0px, rgba(0,0,0,0.18) 1px, transparent 1px, transparent 3px);
+}
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 9001; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
+}
+
+/* ============================================================
+   BOXED CHROME — the Crescent Hawk layer. Every panel is a hard
+   rectangle with a double rule at the top and a small-caps label
+   notched into it. No rounding, no shadows, no gradients: the
+   1988 look is flat and framed.
+   ============================================================ */
+.box {
+  position: relative; background: var(--panel);
+  border: 1px solid var(--border); border-top: 3px double var(--border);
+  padding: 14px 12px 12px;
+}
+.box > .box-label {
+  position: absolute; top: -8px; left: 10px;
+  background: var(--bg); padding: 0 6px;
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--amber);
+}
+.box.is-live { border-color: var(--amber-dim); }
+
+/* ============================================================
+   LAYOUT — board centre, status panel beside it, command rail
+   under it. Collapses to one column on a phone, where the rail
+   becomes a fixed thumb-reachable bottom bar.
+   ============================================================ */
+#app {
+  display: grid; gap: 12px; padding: 12px;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-areas: "hud hud" "board side" "rail side";
+  align-content: start; min-height: 100%;
+}
+#hud { grid-area: hud; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+#hud .brand { color: var(--amber); letter-spacing: 0.22em; text-transform: uppercase; }
+#hud .brand b { color: var(--green); font-weight: 700; }
+#board-wrap { grid-area: board; display: flex; justify-content: center; }
+#grid { margin: 0 auto; }
+#side { grid-area: side; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+#rail { grid-area: rail; }
+
+#rail .keys { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+#rail kbd {
+  font: inherit; color: var(--amber); background: none; border: 0; padding: 0;
+}
+#rail .cmd { color: var(--text-dim); white-space: nowrap; }
+
+#log-list { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
+#log-list li { padding: 2px 0; border-bottom: 1px solid var(--panel-2); color: var(--text-dim); }
+
+/* ============================================================
+   A11Y, TOUCH, MOTION, RESPONSIVE
+   ============================================================ */
+*:focus-visible { outline: 2px solid var(--white); outline-offset: 2px; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+@media (pointer: coarse) {
+  .btn, .icon-btn, #rail .cmd { min-height: 44px; display: inline-flex; align-items: center; }
+}
+
+@media (max-width: 760px) {
+  #app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "hud" "board" "side";
+    padding-bottom: calc(var(--rail-h, 84px) + 12px);
+  }
+  #rail .keys { gap: 2px 14px; font-size: 13px; }
+  #rail {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    border-left: 0; border-right: 0; border-bottom: 0;
+    background: var(--bg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  body::before, body::after { display: none; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="hud">
+    <span class="brand">Puma<b>Heart</b></span>
+    <span id="hud-turn" class="sr-only"></span>
+  </header>
+
+  <section id="board-wrap" class="box" aria-labelledby="board-label">
+    <span class="box-label" id="board-label">Field</span>
+    <div id="grid" role="grid" aria-label="Battlefield, 9 files by 8 ranks"></div>
+  </section>
+
+  <aside id="side">
+    <div id="status" class="box" aria-labelledby="status-label">
+      <span class="box-label" id="status-label">Unit</span>
+      <div id="status-body">No unit selected.</div>
+    </div>
+    <div id="log" class="box" aria-labelledby="log-label">
+      <span class="box-label" id="log-label">Field Report</span>
+      <ul id="log-list" aria-label="Event log"></ul>
+    </div>
+  </aside>
+
+  <nav id="rail" class="box" aria-labelledby="rail-label">
+    <span class="box-label" id="rail-label">Orders</span>
+    <div class="keys" id="rail-keys"></div>
+  </nav>
+</div>
+<div id="announcements" class="sr-only" aria-live="polite"></div>
+
+<script>
+/* ============================================================
+   BOOT — B1 is chrome only. No rules engine yet: per the plan,
+   nothing renders until the headless sim in B3 is green.
+   ============================================================ */
+"use strict";
+
+/* The board. 9 is printed in the rulebook's setup diagram; 8 was
+   counted on the physical board and corroborated five ways. Every
+   online source says 9x10, traced to one hedged line in a 1998
+   InQuest Gamer review. It is wrong. */
+const W = 9, H = 8;
+
+const UI = { reducedMotion: false };
+
+const RAIL = [
+  ["M", "Move"], ["T", "Turn"], ["A", "Attack"],
+  ["N", "Next unit"], ["Z", "Undo"], [".", "End turn"], ["?", "Help"],
+];
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function renderRail() {
+  document.getElementById("rail-keys").innerHTML = RAIL
+    .map(([k, label]) => `<span class="cmd">[<kbd>${esc(k)}</kbd>] ${esc(label)}</span>`)
+    .join("");
+}
+
+/* Placeholder grid so the 9x8 proportions and the four empty ranks
+   between the deployment zones can be eyeballed at every breakpoint. */
+function renderGridStub() {
+  const g = document.getElementById("grid");
+  g.style.display = "grid";
+  g.style.gridTemplateColumns = `repeat(${W}, var(--sq))`;
+  g.style.gridAutoRows = "var(--sq)";
+  g.style.border = "1px solid var(--border)";
+  g.style.width = "max-content";
+  let html = "";
+  for (let r = 0; r < H; r++) {
+    for (let c = 0; c < W; c++) {
+      const light = (c + r) % 2 === 0;
+      // Deployment zones: side 1 on ranks 0-1, side 0 on ranks 6-7.
+      const zone = r <= 1 ? "var(--deploy-dun)" : r >= H - 2 ? "var(--deploy-pale)" : "";
+      const tint = zone ? `box-shadow: inset 0 0 0 99px ${zone};` : "";
+      html += `<div class="sq" role="gridcell" style="background:${
+        light ? "var(--sq-light)" : "var(--sq-dark)"
+      };border:1px solid var(--border);${tint}"></div>`;
+    }
+  }
+  g.innerHTML = html;
+}
+
+/* The rail is fixed to the bottom on narrow screens, so #app must reserve its
+   ACTUAL height -- it grows with the pointer:coarse 44px rule and with wrapping,
+   and any hard-coded reservation is wrong on some device. */
+function syncRailHeight() {
+  const rail = document.getElementById("rail");
+  document.documentElement.style.setProperty("--rail-h", rail.offsetHeight + "px");
+}
+
+function boot() {
+  UI.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  renderRail();
+  renderGridStub();
+  syncRailHeight();
+  addEventListener("resize", syncRailHeight, { passive: true });
+  console.log(
+    "%cPumaHeart — a port of Lionheart (Parker Brothers, 1997). Board is 9x8, not the 9x10 the internet claims.",
+    "color:#00ff41"
+  );
+}
+
+boot();
+</script>
+</body>
+</html>
