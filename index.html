@@ -217,6 +217,15 @@ body::after {
 .u[data-face="3"]::after { left: -4px; top: 50%; margin-top: -4px;
   border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-right: 5px solid currentColor; }
 
+/* Deployment */
+#deploybar { grid-area: rail; background: var(--panel); }
+#deploybar[hidden] { display: none !important; }
+#deploybar .dep-who { margin: 2px 0 4px; }
+#deploybar p { margin: 2px 0; }
+#deploybar kbd { color: var(--amber); }
+.sq.dzone { outline: 1px solid var(--green-dark); outline-offset: -1px; }
+
+
 /* Menu, help and tutorial share the overlay shell */
 #menu, #help, #tutorial {
   position: fixed; inset: 0; z-index: 8200; display: flex;
@@ -408,6 +417,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
     </div>
   </aside>
 
+  <nav id="deploybar" class="box" hidden aria-label="Battle plan"></nav>
   <nav id="rail" class="box" aria-labelledby="rail-label">
     <span class="box-label" id="rail-label">Orders</span>
     <div class="keys" id="rail-keys"></div>
@@ -1284,6 +1294,11 @@ function animate(events) {
 }
 
 const STEP = {
+  deploy: {
+    /* Humans lay their battle plan; bots keep the template formation. */
+    place() { return WAIT; },
+  },
+
   play: {
     begin() {
       for (const u of G.units) if (u.side === G.turn) u.attackedThisTurn = false;
@@ -1482,6 +1497,7 @@ function renderBoard() {
       if ((c + r) % 2 === 0) cls.push("lt");
       if (r <= 1) cls.push("dz1");
       if (r >= H - 2) cls.push("dz0");
+      if (G.phase === "deploy" && inDeployZone(G.deploySide, c, r)) cls.push("dzone");
       if (zone.has(k)) cls.push("zone");
       if (moves.has(k)) cls.push("mv");
       if (targets.has(k)) cls.push("tg");
@@ -1495,11 +1511,26 @@ function renderBoard() {
   g.innerHTML = html;
 }
 
-function renderHUD() {
+function syncPrefsChrome() {
   const sp = document.getElementById("hud-speed");
   if (sp) sp.textContent = "Speed: " + SPEED_NAME[UI.speed];
   const mu = document.getElementById("hud-mute");
   if (mu) mu.textContent = UI.muted ? "Sound off" : "Sound on";
+}
+
+function renderHUD() {
+  if (G.phase === "deploy") {
+    const el = document.getElementById("hud-state");
+    if (el) el.innerHTML = `<span class="side s${G.deploySide}">${esc(G.players[G.deploySide].name)}</span>
+      <span class="rnd">laying the battle plan</span>`;
+    const t = document.getElementById("hud-turn");
+    if (t) t.textContent = `${G.players[G.deploySide].name} is deploying`;
+  }
+  const sp = document.getElementById("hud-speed");
+  if (sp) sp.textContent = "Speed: " + SPEED_NAME[UI.speed];
+  const mu = document.getElementById("hud-mute");
+  if (mu) mu.textContent = UI.muted ? "Sound off" : "Sound on";
+  if (G.phase === "deploy") { syncPrefsChrome(); return; }
   const p = G.players[G.turn];
   const pips = `<span class="acts" aria-hidden="true">${
     "●".repeat(G.actionsLeft)}${"○".repeat(Math.max(0, 2 - G.actionsLeft))}</span>`;
@@ -1570,6 +1601,7 @@ function updateAll() {
   renderTray();
   renderHUD();
   renderStatus();
+  renderDeployBar();
   renderCurtain();
   renderMuster();
   renderMenu();
@@ -1676,6 +1708,10 @@ function selUnit() {
   const u = UI.sel ? byUid(G, UI.sel) : null;
   return u && u.alive ? u : null;
 }
+function deployTurn() {
+  return G.phase === "deploy" && !UI.curtain && !UI.menuOpen && !UI.helpOpen &&
+         !UI.musterOpen && !UI.tutorialOpen;
+}
 function myTurn() {
   return !G.gameOver && isHuman(G.turn) && !UI.animating && !UI.curtain && !UI.musterOpen && !UI.menuOpen && !UI.helpOpen && !UI.tutorialOpen;
 }
@@ -1715,6 +1751,7 @@ function announceActions() {
 /* Contextual activation: the square under the cursor decides what happens,
    which is what keeps play to two clicks with no mode switching. */
 function activateSquare(c, r) {
+  if (G.phase === "deploy") { deployActivate(c, r); return; }
   if (!myTurn()) return;
   const grid = buildGrid(G);
   const u = unitAt(G, grid, c, r);
@@ -1733,9 +1770,35 @@ function activateSquare(c, r) {
   if (sel) { UI.sel = null; updateAll(); }
 }
 
+/* During deployment a click either picks a base up or puts it down. There is
+   no separate "held" mode: the selected base is the held one. */
+function deployActivate(c, r) {
+  if (UI.curtain || UI.menuOpen || UI.helpOpen) return;
+  const side = G.deploySide;
+  const u = unitAt(G, buildGrid(G), c, r);
+  const sel = UI.sel ? byUid(G, UI.sel) : null;
+
+  if (sel && sel.side === side && !isAnchored(sel)) {
+    if (deployPlace(sel, c, r)) { UI.cur = idx(sel.c, sel.r); updateAll(); return; }
+  }
+  if (u && u.side === side) {
+    UI.sel = UI.sel === u.uid ? null : u.uid;
+    if (UI.sel) sfx("select");
+    UI.cur = idx(c, r);
+    updateAll();
+    return;
+  }
+  UI.sel = null;
+  updateAll();
+}
+
 function faceSelected(face) {
   const sel = selUnit();
   if (!sel || sel.face === face) return;
+  if (G.phase === "deploy") {
+    if (deployFace(sel, face)) updateAll();
+    return;
+  }
   tryAction({ kind: "turn", uid: sel.uid, face });
 }
 
@@ -1799,10 +1862,14 @@ const ACTS = {
   help: () => toggleHelp(),
   ready: () => {
     UI.curtain = false;
-    if (UI.curtainThen === "muster") { UI.curtainThen = null; updateAll(); return; }
+    const then = UI.curtainThen;
+    UI.curtainThen = null;
+    if (then === "muster" || then === "deploy") { updateAll(); return; }
     updateAll();
     advance();
   },
+  deployAuto: deployAuto,
+  deployReady: deployReady,
   musterBases: el => musterAdjust(el.dataset.type, "bases", +el.dataset.delta),
   musterFigs: el => musterAdjust(el.dataset.type, "figs", +el.dataset.delta),
   musterPreset: () => { UI.muster = basicSpec(); updateAll(); },
@@ -1909,7 +1976,23 @@ function startGame(seed, opts) {
   Object.assign(G.cfg, opts || {});
   if (G.cfg.opponent === "hotseat") G.players[1].isBot = false;
   else G.players[1].skill = UI.pendingSkill != null ? +UI.pendingSkill : 1;
-  UI.sel = null; UI.undo = []; UI.cur = idx(4, H - 1);
+
+  /* The Basic Game's opening is printed and fixed. A customised army gets the
+     secret battle plan, which is where the strategy lives. */
+  const humans = [0, 1].filter(i => !G.players[i].isBot);
+  if (G.cfg.setup === "custom" && humans.length) {
+    G.phase = "deploy"; G.step = "place";
+    G.deploySide = humans[0];
+    G.playersDeployed = [];
+    UI.cur = idx(4, deployRows(G.deploySide)[0]);
+  }
+  UI.sel = null; UI.undo = [];
+  if (G.phase === "deploy") {
+    log(`${G.players[G.deploySide].name} lays a battle plan.`);
+    updateAll();
+    return;
+  }
+  UI.cur = idx(4, H - 1);
   log("The prides take the field.");
   advance();
 }
@@ -2774,6 +2857,12 @@ function renderHelp() {
        whoever is behind it into panicking too. A retreat blocked by the board edge, an enemy, your
        own King or a Mercenary <i>kills the retreating unit</i>. Watch for chain reactions.</p>
     <p><b>Winning.</b> Kill the enemy King, or leave it standing alone on the field.</p>
+    <p><b>Your battle plan.</b> A customised army is placed by you, in secret, before a shot is
+       fired: your King holds the centre of the back row, and every other base is yours to put
+       anywhere on that rank or the one in front, facing wherever you like. Pick a base, then a
+       square to move it, or another base to swap them. Bunch in the middle, or send the riders
+       wide to turn a flank &mdash; the rulebook's own words are &ldquo;You&rsquo;re in
+       command!&rdquo; The Basic Game's opening is printed and fixed instead.</p>
 
     <h3>The warriors</h3>
     <div class="scrollx"><table class="ref">
@@ -2809,6 +2898,7 @@ const TUTORIAL = [
   ["Facing", "The chevron shows which way a unit faces. Foot moves one square forward; Kings and Knights ride as far as they like in a straight line until blocked."],
   ["Attacking", "You must be next to and facing your target, though you may strike its side or rear. Archers are different: they hit anything in the nine squares ahead, over the heads of your own line."],
   ["PANIC", "If every die comes up PANIC the unit turns and runs, shoving your own line backwards. If it is pushed off the board, into an enemy or into your own King, it dies."],
+  ["Your battle plan", "A customised army is yours to place before a shot is fired. The King holds the centre of the back row; everything else goes where you want it, facing where you want. Most of the thinking in this game happens here."],
   ["Winning", "Kill the enemy King, or leave it standing alone on the field. Press ? at any time for the full rules."],
 ];
 
@@ -2892,6 +2982,21 @@ const SHOTS = {
     if (kn) { UI.sel = kn.uid; UI.cur = idx(kn.c, kn.r); }
   },
 
+  /* Laying the battle plan -- the part of the game the player actually
+     commands, per "You're in command!" on p.6. */
+  deploy() {
+    UI.pendingOpponent = "ai"; UI.pendingSkill = 2;
+    UI.houseRules = defaultHouseRules();
+    startGame(77, { setup: "custom", opponent: "ai" });
+    const kn = G.units.filter(u => u.side === 0 && u.type === "knight");
+    if (kn[0]) deployPlace(kn[0], 0, H - 1);          /* a rider on each flank */
+    if (kn[1]) deployPlace(kn[1], 8, H - 1);
+    const hv = G.units.filter(u => u.side === 0 && u.type === "heavy");
+    if (hv[0]) deployPlace(hv[0], 4, H - 2);          /* shields in the centre */
+    const u = G.units.find(x => x.side === 0 && x.type === "archer");
+    if (u) { UI.sel = u.uid; UI.cur = idx(u.c, u.r); }
+  },
+
   /* The rule hardest to describe in words: an Archer shooting over its own
      front rank into the enemy line. */
   archer() {
@@ -2956,6 +3061,120 @@ function runShot(name) {
   updateAll();
   document.body.setAttribute("data-shot", name);
   return true;
+}
+
+/* ============================================================
+   DEPLOYMENT — "Your Secret Battle Plans" (rulebook p.6)
+   "Your King must start on the royal emblem in the back row,
+   and you may place your other figures on that row and the row
+   in front of it. Other than that, use your strategy: Will you
+   bunch your units in the middle, or start your Knights along
+   the outside to flank your opponent? You're in command!"
+
+   That last line is the designer saying placement IS the game,
+   so it cannot be a template. The board starts in the auto
+   formation and every base is yours to move, swap and face --
+   which also means the position is legal at every moment, with
+   no half-placed state for the invariants to trip over.
+   ============================================================ */
+
+function deployRows(side) {
+  return side === 0 ? [H - 1, H - 2] : [0, 1];
+}
+function inDeployZone(side, c, r) {
+  return inBoard(c, r) && deployRows(side).includes(r);
+}
+/* The King is fixed by the rules, not by us: "on the royal emblem in the
+   back row." Everything else is free. */
+function isAnchored(u) { return u.type === "king"; }
+
+function deployingSide() { return G.phase === "deploy" ? G.deploySide : -1; }
+
+/* Move within the zone, or swap with one of your own bases. Both are legal
+   at any moment, so there is never an illegal board to guard against. */
+function deployPlace(unit, c, r) {
+  if (G.phase !== "deploy" || unit.side !== G.deploySide) return false;
+  if (isAnchored(unit)) return false;
+  if (!inDeployZone(unit.side, c, r)) return false;
+  const other = unitAt(G, buildGrid(G), c, r);
+  if (other === unit) return false;
+  if (other) {
+    if (other.side !== unit.side || isAnchored(other)) return false;
+    const oc = other.c, or = other.r;
+    other.c = unit.c; other.r = unit.r;
+    unit.c = oc; unit.r = or;
+    log(`${defOf(unit).name} and ${defOf(other).name} change places.`);
+  } else {
+    unit.c = c; unit.r = r;
+    log(`${defOf(unit).name} takes ${squareName(c, r)}.`);
+  }
+  sfx("move");
+  return true;
+}
+
+function deployFace(unit, face) {
+  if (G.phase !== "deploy" || unit.side !== G.deploySide) return false;
+  unit.face = face;
+  sfx("turn");
+  return true;
+}
+
+function deployAuto() {
+  const side = G.deploySide;
+  const mine = G.units.filter(u => u.side === side);
+  const spec = {};
+  for (const t of MUSTER_ORDER) spec[t] = { bases: 0, figs: 0 };
+  const list = mine.map(u => ({ type: u.type, figs: u.figs }));
+  const placed = placeArmy(side, list);
+  placed.forEach((p, i) => {
+    const u = mine.find(x => x.type === p.unit.type && x.figs === p.unit.figs && !x._pl);
+    if (u) { u.c = p.c; u.r = p.r; u._pl = true; }
+  });
+  for (const u of mine) delete u._pl;
+  log("The line re-forms.");
+  updateAll();
+}
+
+function deployReady() {
+  if (G.phase !== "deploy") return;
+  const done = G.deploySide;
+  G.playersDeployed = (G.playersDeployed || []).concat([done]);
+
+  const other = 1 - done;
+  const otherIsHuman = !G.players[other].isBot;
+  if (otherIsHuman && !G.playersDeployed.includes(other)) {
+    G.deploySide = other;
+    UI.sel = null;
+    UI.cur = idx(4, deployRows(other)[0]);
+    /* Hot-seat: the second battle plan is laid in secret, which is what the
+       rulebook's upright game box is for. */
+    if (G.cfg.opponent === "hotseat") { UI.curtain = true; UI.curtainThen = "deploy"; }
+    log(`${G.players[other].name} lays a battle plan.`);
+    updateAll();
+    return;
+  }
+  UI.sel = null;
+  go("play", "begin");
+  log("The prides take the field.");
+  advance();
+}
+
+function renderDeployBar() {
+  const el = document.getElementById("deploybar");
+  const rail = document.getElementById("rail");
+  if (G.phase !== "deploy") { el.hidden = true; if (rail) rail.hidden = false; return; }
+  el.hidden = false;
+  if (rail) rail.hidden = true;          /* the orders rail is for playing, not placing */
+  const side = G.deploySide;
+  el.innerHTML = `<span class="box-label">Battle Plan</span>
+    <p class="dep-who"><span class="side s${side}">${esc(G.players[side].name)}</span>
+      &mdash; place your line on the near two ranks. The King holds the centre of the back row.</p>
+    <p class="dim">Pick a base, then a square to move it, or another base to swap them.
+      <kbd>1</kbd>&ndash;<kbd>4</kbd> or <kbd>Q</kbd>/<kbd>E</kbd> to face it.</p>
+    <div class="muster-actions">
+      <button class="btn" data-act="deployAuto">Re-form the line</button>
+      <button class="btn" data-act="deployReady">Take the field</button>
+    </div>`;
 }
 
 /* ============================================================
@@ -3460,6 +3679,68 @@ const RULE_TESTS = [
     return z.every(sq => inBoard(sq.c, sq.r)) && z.every(sq => sq.c >= 0) && z.length < 9;
   }],
 
+  ["a customised game with a human in it stops to lay a battle plan", () => {
+    UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
+    startGame(55, { setup: "custom", opponent: "ai" });
+    const deploying = G.phase === "deploy" && G.deploySide === 0;
+    /* The Basic Game's opening is printed and fixed -- no plan to lay. */
+    startGame(55, { setup: "basic", opponent: "ai" });
+    return deploying && G.phase === "play";
+  }],
+
+  ["a base may be moved anywhere in its own two ranks, and swapped with another", () => {
+    UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
+    startGame(56, { setup: "custom", opponent: "ai" });
+    const mine = G.units.filter(u => u.side === 0 && u.type !== "king");
+    const u = mine[0];
+    const empty = (() => {
+      const grid = buildGrid(G);
+      for (const r of deployRows(0)) for (let c = 0; c < W; c++) {
+        if (!grid[idx(c, r)]) return { c, r };
+      }
+      return null;
+    })();
+    if (!empty || !deployPlace(u, empty.c, empty.r)) return false;
+    if (u.c !== empty.c || u.r !== empty.r) return false;
+
+    const other = G.units.find(o => o.side === 0 && o !== u && o.type !== "king");
+    const uc = u.c, ur = u.r, oc = other.c, or_ = other.r;
+    if (!deployPlace(u, oc, or_)) return false;
+    return u.c === oc && u.r === or_ && other.c === uc && other.r === ur;
+  }],
+
+  ["the King is anchored, and nothing may leave the deployment zone", () => {
+    UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
+    startGame(57, { setup: "custom", opponent: "ai" });
+    const king = G.units.find(u => u.side === 0 && u.type === "king");
+    const other = G.units.find(u => u.side === 0 && u.type !== "king");
+    const kc = king.c, kr = king.r;
+    /* "Your King must start on the royal emblem in the back row." */
+    const kingFixed = !deployPlace(king, 0, H - 1) && king.c === kc && king.r === kr;
+    /* "...you may place your other figures on that row and the row in front." */
+    const zoneHeld = !deployPlace(other, 4, 3) && !deployPlace(other, 4, 0);
+    /* And no base may be swapped onto the King's square either. */
+    const kingUnswappable = !deployPlace(other, kc, kr);
+    return kingFixed && zoneHeld && kingUnswappable;
+  }],
+
+  ["facing can be set freely while deploying, and costs nothing", () => {
+    UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
+    startGame(58, { setup: "custom", opponent: "ai" });
+    const u = G.units.find(x => x.side === 0 && x.type !== "king");
+    const before = G.actionsLeft;
+    deployFace(u, E); const east = u.face === E;
+    deployFace(u, WEST);
+    return east && u.face === WEST && G.actionsLeft === before;
+  }],
+
+  ["taking the field ends deployment and starts play", () => {
+    UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
+    startGame(59, { setup: "custom", opponent: "ai" });
+    deployReady();
+    return G.phase === "play" && !G.units.some(u => !inBoard(u.c, u.r));
+  }],
+
   ["a unit may not attack twice in the same turn, but another unit may", () => {
     const [a, b] = testPosition([
       { side: 0, type: "infantry", figs: 4, c: 4, r: 5, face: N },
@@ -3565,6 +3846,7 @@ window.__PH = {
   botChooseTurn, evaluate, expectedAttack, SKILL, assertInvariants, checkVictory,
   sfx, cycleSpeed, toggleMute, SPEED_FACTOR, perBaseOf, HOUSE_RULES, TUTORIAL,
   openMenu, toggleHelp, runShot, SHOTS,
+  deployPlace, deployFace, deployAuto, deployReady, inDeployZone, deployRows,
   tryAction, activateSquare, get UI() { return UI; },
   legalActions, buildGrid, UNIT_DEFS, DICE_DIST,
 };

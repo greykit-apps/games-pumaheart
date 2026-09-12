@@ -43,6 +43,7 @@ normal, and they take your own line with them.
 
 Win by killing the enemy King, or by leaving it standing alone on the field.
 
+![Laying the battle plan](screenshots/deploy.png)
 ![The printed opening](screenshots/basic.png)
 ![An Archer firing over its own front rank](screenshots/archer.png)
 ![A panic cascade](screenshots/panic.png)
@@ -51,7 +52,11 @@ Win by killing the enemy King, or by leaving it standing alone on the field.
 ## Features
 
 - **Both printed setups.** The Basic Game's fixed opening, and the Customised Setup where you
-  muster your own ten bases from the figures you own and lay out your secret battle plan.
+  muster your own ten bases from the figures you own — and then **place every one of them
+  yourself**. Your King holds the centre of the back row; everything else goes anywhere on your
+  two ranks, facing wherever you choose. Bunch in the middle or send the riders wide to turn a
+  flank. In hot-seat both plans are laid in secret, behind the curtain that stands in for the
+  rulebook's upright game box.
 - **All seven warriors**, including the Extra Forces: Heavy Infantry that strikes any adjacent
   square without facing it, Peasants that panic once per PANIC die rolled, and Mercenaries that
   panic their victims, never panic themselves, and **change sides** when an enemy King bribes
@@ -152,8 +157,8 @@ __PH.runMatch(0, 2, 100)  // Squire versus Marshal
 The AI reads exact probabilities from a pre-computed dice distribution rather than rolling, so
 it never touches the shared RNG stream — asserted, not assumed.
 
-Screenshots regenerate from fixed seeds: `#shot=basic`, `muster`, `archer`, `panic`, `midgame`,
-`gameover`.
+Screenshots regenerate from fixed seeds: `#shot=basic`, `muster`, `deploy`, `archer`, `panic`,
+`midgame`, `gameover`.
 
 ## Other Puma Games
 
