@@ -219,6 +219,22 @@ body::after {
    one place to change it.
    ============================================================ */
 
+/* The board. 9 wide is printed -- countable in the p.3 setup diagram,
+   which reads [blank][blank] Archers Knights King Knights Archers
+   [blank][blank]. 8 deep is not printed anywhere; it was counted on the
+   physical board and corroborated four further ways, the neatest being
+   that the board's fold bisects the centre column, which is only
+   possible if the column count is odd. Every online source says 9x10,
+   traceable to one hedged line in a 1998 InQuest Gamer review. It is
+   wrong. Only four empty ranks separate the armies. */
+const W = 9, H = 8;
+
+/* Facing is an integer 0..3. Rotation is (face + k) % 4, and an
+   about-face is + 2. */
+const N = 0, E = 1, S = 2, WEST = 3;
+const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+const FACE_NAMES = ["north", "east", "south", "west"];
+
 /* "Each gets 2 Arrows, one PANIC and 3 Battle-axes." (p.2) */
 const AXE = 0, ARROW = 1, PANIC = 2;
 const DIE_FACES = [AXE, AXE, AXE, ARROW, ARROW, PANIC];
@@ -352,6 +368,819 @@ function diceForFigs(type, figs) {
 }
 
 /* ============================================================
+   GAME STATE
+   G is pure JSON and is saved verbatim: no Map, no Set, no
+   functions, no DOM references, no derived indices. UI holds
+   everything transient. G.rng is the LIVE mulberry32 state, so a
+   saved game replays identically -- which is why rnd() mutates
+   G.rng in place rather than closing over a generator.
+   ============================================================ */
+let G = null;
+
+function rnd() {
+  let a = (G.rng + 0x6D2B79F5) | 0;
+  G.rng = a;
+  let t = Math.imul(a ^ (a >>> 15), 1 | a);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+function rint(n) { return Math.floor(rnd() * n); }
+function pickOne(arr) { return arr[rint(arr.length)]; }
+
+function makeUnit(side, type, figs, c, r, face) {
+  return { uid: G.nextUid++, side, type, figs, c, r, face, alive: true, attackedThisTurn: false };
+}
+
+/* p.3: King centre of the back row, Knights either side of the King,
+   Archers either side of the Knights, 5 Infantry directly in front. */
+function deployBasic(side) {
+  const back = side === 0 ? H - 1 : 0;
+  const front = side === 0 ? H - 2 : 1;
+  const face = side === 0 ? 0 : 2;          /* 0 = N, 2 = S */
+  G.units.push(makeUnit(side, "king", 1, 4, back, face));
+  for (const c of [3, 5]) G.units.push(makeUnit(side, "knight", 2, c, back, face));
+  for (const c of [2, 6]) G.units.push(makeUnit(side, "archer", 4, c, back, face));
+  for (const c of [2, 3, 4, 5, 6]) G.units.push(makeUnit(side, "infantry", 4, c, front, face));
+}
+
+function newGame(seed) {
+  G = {
+    v: 1, seed: seed, rng: seed,
+    cfg: { setup: "basic", massiveInfantry: false, partialBases: true, roundCap: 60 },
+    phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
+    units: [], dice: null, log: [], gameOver: false, result: null, nextUid: 1,
+  };
+  deployBasic(0);
+  deployBasic(1);
+  /* p.4: "Each player rolls all 4 Combat dice. The player who rolls the
+     most Battle-axes will go first." Ties are not addressed by the rules;
+     we re-roll (plan section 6, gap 3). */
+  for (;;) {
+    const a = rollDice(4).filter(f => f === AXE).length;
+    const b = rollDice(4).filter(f => f === AXE).length;
+    if (a !== b) { G.first = a > b ? 0 : 1; break; }
+  }
+  G.turn = G.first;
+  return G;
+}
+
+/* ============================================================
+   RULES ENGINE — pure functions over a position P. G satisfies
+   the interface, so the same code drives the human, the bots and
+   the headless sims. Nothing here touches the DOM.
+   ============================================================ */
+
+function idx(c, r) { return r * W + c; }
+function inBoard(c, r) { return c >= 0 && c < W && r >= 0 && r < H; }
+function stepFrom(c, r, face, k) {
+  return { c: c + DIRS[face][0] * k, r: r + DIRS[face][1] * k };
+}
+
+/* The one derived index, rebuilt on demand. Storing it in G is how
+   saves go stale. */
+function buildGrid(P) {
+  const g = new Array(W * H).fill(0);
+  for (const u of P.units) if (u.alive) g[idx(u.c, u.r)] = u.uid;
+  return g;
+}
+function byUid(P, uid) { return uid ? P.units.find(u => u.uid === uid) : null; }
+function unitAt(P, grid, c, r) {
+  return inBoard(c, r) ? byUid(P, grid[idx(c, r)]) : null;
+}
+function livingOf(P, side) { return P.units.filter(u => u.alive && u.side === side); }
+function kingOf(P, side) {
+  return P.units.find(u => u.alive && u.side === side && u.type === "king") || null;
+}
+function defOf(u) { return UNIT_DEFS[u.type]; }
+
+/* p.4: "A unit may only move in the direction its warriors are facing."
+   Foot moves 1 square per action; Kings and Knights "move as far as they
+   want... They stop if blocked by a friendly or enemy unit." A mounted
+   unit may stop at ANY distance, not only the maximum. */
+function moveSquares(P, grid, u) {
+  const out = [];
+  const max = defOf(u).mounted ? Math.max(W, H) : 1;
+  for (let k = 1; k <= max; k++) {
+    const s = stepFrom(u.c, u.r, u.face, k);
+    if (!inBoard(s.c, s.r) || grid[idx(s.c, s.r)]) break;
+    out.push({ c: s.c, r: s.r, dist: k });
+  }
+  return out;
+}
+
+function actionCost(u, kind) {
+  const d = defOf(u);
+  if (kind === "attack") return 1;
+  return (kind === "move" ? d.moveCost : d.turnCost) || 1;
+}
+
+/* p.5: "Archers attack units within the block of 9 squares directly in
+   front of them" and "may fire over the heads of units in front of them
+   and attack any single enemy unit within the 9 squares." The block is
+   3 wide x 3 deep and starts immediately in front. There is no
+   line-of-fire rule -- arrows pass over friend and foe alike.
+
+   Heavy Infantry (p.6) "may attack any adjacent square -- forwards,
+   sideways, diagonally or to the back... the only unit that does not
+   have to face its enemy in order to attack."
+
+   Everyone else (p.4): "You must be next to and facing the unit you are
+   attacking. You may attack from the side or rear!" -- the DEFENDER's
+   facing is irrelevant, so there is no flanking rule. */
+function attackZone(u) {
+  const d = defOf(u);
+  const out = [];
+  if (d.allAdjacent) {
+    for (let dc = -1; dc <= 1; dc++) {
+      for (let dr = -1; dr <= 1; dr++) {
+        if (dc || dr) out.push({ c: u.c + dc, r: u.r + dr });
+      }
+    }
+    return out.filter(s => inBoard(s.c, s.r));
+  }
+  if (u.type === "archer") {
+    const F = DIRS[u.face], R = DIRS[(u.face + 1) % 4];
+    for (let dist = 1; dist <= 3; dist++) {
+      for (let side = -1; side <= 1; side++) {
+        const c = u.c + F[0] * dist + R[0] * side;
+        const r = u.r + F[1] * dist + R[1] * side;
+        if (inBoard(c, r)) out.push({ c, r });
+      }
+    }
+    return out;
+  }
+  const s = stepFrom(u.c, u.r, u.face, 1);
+  return inBoard(s.c, s.r) ? [s] : [];
+}
+
+function attackTargets(P, grid, u) {
+  return attackZone(u)
+    .map(s => unitAt(P, grid, s.c, s.r))
+    .filter(t => t && t.side !== u.side);
+}
+
+/* "The number of dice you roll depends on the type of unit and how many
+   figures are on it." The box holds 4 dice and nothing can exceed that. */
+function diceFor(u) {
+  const d = defOf(u);
+  const per = (G && G.cfg.massiveInfantry && u.type === "infantry") ? MASSIVE_INFANTRY.maxDice : MAX_DICE;
+  return Math.min(per, MAX_DICE, u.figs * d.dicePerFig);
+}
+
+function rollDice(n) {
+  /* Test seam. A total panic on a full base happens once in 1296
+     attacks, so the cascade cannot be reached by simulation alone. */
+  if (HARNESS.forceFaces) {
+    const forced = HARNESS.forceFaces.splice(0, n);
+    if (forced.length === n) return forced;
+  }
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(DIE_FACES[rint(6)]);
+  return out;
+}
+
+/* p.5 last-man rule: a single Infantry or Archer attacking a target that
+   needs two hits rolls one die, and on a hit rolls that die again. A PANIC
+   either time panics the attacker. */
+function needsLastManDuel(atk, def) {
+  return atk.figs === 1 && defOf(atk).dicePerFig === 1 && defOf(def).htk === 2;
+}
+
+function resolveAttack(P, grid, atk, def) {
+  const ad = defOf(atk);
+  const res = { atkUid: atk.uid, defUid: def.uid, faces: [], hits: 0, removed: 0,
+                panicSteps: 0, duel: false, victimRetreat: 0 };
+
+  if (needsLastManDuel(atk, def)) {
+    res.duel = true;
+    const f1 = rollDice(1)[0];
+    res.faces.push(f1);
+    if (f1 === PANIC) { res.panicSteps = 1; return res; }
+    if (f1 === ad.hitFace) {
+      const f2 = rollDice(1)[0];
+      res.faces.push(f2);
+      if (f2 === PANIC) { res.panicSteps = 1; return res; }
+      if (f2 === ad.hitFace) res.hits = 2;
+    }
+  } else {
+    const n = diceFor(atk);
+    res.faces = rollDice(n);
+    const axes = res.faces.filter(f => f === AXE).length;
+    const arrows = res.faces.filter(f => f === ARROW).length;
+    const panics = res.faces.filter(f => f === PANIC).length;
+    res.hits = hitsFrom(ad, axes, arrows);
+    res.panicSteps = panicsFrom(ad, panics, n);
+    /* Mercenaries never panic; instead their victim retreats once per
+       PANIC they rolled, unless it is an enemy King or Mercenary. */
+    if (ad.panicsVictim && panics) {
+      const dd = defOf(def);
+      if (dd.panics) res.victimRetreat = panics;
+    }
+  }
+
+  /* "If it's not a total panic, disregard the PANICs you rolled."
+     A total panic discards the hits with it. */
+  if (res.panicSteps) { res.hits = 0; return res; }
+
+  /* "remove 1 figure ... for every Battle-ax"; a Knight, King or Heavy
+     Infantry "must be hit twice in the same Attack to be eliminated". */
+  res.removed = Math.floor(res.hits / defOf(def).htk);
+  return res;
+}
+
+function applyRemoval(P, def, count) {
+  if (count <= 0) return false;
+  def.figs -= count;
+  if (def.figs <= 0) { def.figs = 0; def.alive = false; return true; }
+  return false;
+}
+
+/* p.5 PANIC. Blocked retreats ELIMINATE rather than fizzle, so every case
+   resolves and there is no invalid chain to roll back:
+     - off the board            -> the retreating unit is eliminated
+     - into an enemy            -> the retreating unit is eliminated
+     - into your own King       -> the retreating unit is eliminated
+     - into a Mercenary         -> the retreating unit is eliminated (p.7)
+     - into your own other unit -> that unit also panics, and the chain
+                                   continues. "Watch out for chain reactions!" */
+function panicRetreat(P, u, steps, depth) {
+  if (!u.alive || !defOf(u).panics) return;
+  if ((depth || 0) > 64) return;                 /* cycles are impossible, but never trust that */
+  u.face = (u.face + 2) % 4;                     /* about-face */
+  for (let i = 0; i < steps; i++) {
+    if (!u.alive) return;
+    const grid = buildGrid(P);
+    const s = stepFrom(u.c, u.r, u.face, 1);
+    if (!inBoard(s.c, s.r)) { u.alive = false; u.figs = 0; return; }
+    const occ = unitAt(P, grid, s.c, s.r);
+    if (occ) {
+      const blocked = occ.side !== u.side || occ.type === "king" || occ.type === "mercenary";
+      if (blocked) { u.alive = false; u.figs = 0; return; }
+      panicRetreat(P, occ, 1, (depth || 0) + 1);
+      if (occ.alive && occ.c === s.c && occ.r === s.r) return;   /* ally could not clear */
+    }
+    u.c = s.c; u.r = s.r;
+  }
+}
+
+/* p.8: win by eliminating the King, OR by leaving the rival's King
+   standing ALONE on the field -- not by wiping the whole army. */
+function checkVictory(P) {
+  for (const side of [0, 1]) {
+    if (!kingOf(P, side)) return { winner: 1 - side, reason: "king" };
+    if (livingOf(P, side).length === 1) return { winner: 1 - side, reason: "alone" };
+  }
+  return null;
+}
+
+/* ============================================================
+   ACTIONS — legalActions() drives BOTH the UI's highlighting and
+   the AI, so there is exactly one definition of what is legal.
+   ============================================================ */
+function legalActions(P, grid, side) {
+  const out = [];
+  for (const u of P.units) {
+    if (!u.alive || u.side !== side) continue;
+    if (actionCost(u, "move") <= P.actionsLeft) {
+      for (const m of moveSquares(P, grid, u)) {
+        out.push({ kind: "move", uid: u.uid, c: m.c, r: m.r, dist: m.dist });
+      }
+    }
+    if (actionCost(u, "turn") <= P.actionsLeft) {
+      for (let f = 0; f < 4; f++) if (f !== u.face) out.push({ kind: "turn", uid: u.uid, face: f });
+    }
+    /* "An individual unit may not attack more than once per turn." */
+    if (!u.attackedThisTurn && actionCost(u, "attack") <= P.actionsLeft) {
+      for (const t of attackTargets(P, grid, u)) {
+        out.push({ kind: "attack", uid: u.uid, defUid: t.uid });
+      }
+    }
+  }
+  return out;
+}
+
+function applyAction(P, a) {
+  const u = byUid(P, a.uid);
+  P.actionsLeft -= actionCost(u, a.kind);
+  if (a.kind === "move") { u.c = a.c; u.r = a.r; return; }
+  if (a.kind === "turn") { u.face = a.face; return; }
+
+  const grid = buildGrid(P);
+  const def = byUid(P, a.defUid);
+  const res = resolveAttack(P, grid, u, def);
+  u.attackedThisTurn = true;
+  P.dice = res;
+  if (res.removed) applyRemoval(P, def, res.removed);
+  if (res.panicSteps) panicRetreat(P, u, res.panicSteps, 0);
+  if (res.victimRetreat && def.alive) panicRetreat(P, def, res.victimRetreat, 0);
+}
+
+function endTurn(P) {
+  P.turn = 1 - P.turn;
+  if (P.turn === P.first) P.round++;
+  P.actionsLeft = 2;
+  for (const u of P.units) if (u.side === P.turn) u.attackedThisTurn = false;
+}
+
+/* ============================================================
+   INVARIANTS — conservation laws, not per-feature unit tests,
+   which is why they can run on every single step with no
+   fixtures. Each throw carries the phase and round so a failing
+   seed is reproducible. Every one of these has been watched
+   going red; a check nobody has seen fail is indistinguishable
+   from one that cannot fail.
+   ============================================================ */
+const HARNESS = {
+  watermark: {}, expectedUnits: 0, tally: null,
+  forceFaces: null,
+  resetTally() {
+    this.tally = { attacks: 0, hits: 0, figsRemoved: 0, panics: 0,
+                   victimRetreats: 0, duels: 0, actions: {} };
+  },
+};
+
+function assertInvariants() {
+  const where = `at ${G.phase}.${G.step} round ${G.round} turn ${G.turn}`;
+
+  if (G.units.length !== HARNESS.expectedUnits) {
+    throw new Error(`Unit conservation broken: ${G.units.length} vs ${HARNESS.expectedUnits} ${where}`);
+  }
+
+  const seen = new Set();
+  const occupied = new Set();
+  for (const u of G.units) {
+    if (seen.has(u.uid)) throw new Error(`Duplicate uid ${u.uid} ${where}`);
+    seen.add(u.uid);
+
+    if (!Number.isInteger(u.face) || u.face < 0 || u.face > 3) {
+      throw new Error(`Bad facing ${u.face} on uid ${u.uid} ${where}`);
+    }
+    if (!Number.isInteger(u.figs) || u.figs < 0) {
+      throw new Error(`Bad figure count ${u.figs} on uid ${u.uid} ${where}`);
+    }
+
+    /* Figures are removed, never added. */
+    const wm = HARNESS.watermark[u.uid];
+    if (wm !== undefined && u.figs > wm) {
+      throw new Error(`Figures increased on uid ${u.uid}: ${wm} -> ${u.figs} ${where}`);
+    }
+    HARNESS.watermark[u.uid] = u.figs;
+
+    if (u.alive) {
+      if (u.figs < 1 || u.figs > UNIT_DEFS[u.type].perBase) {
+        throw new Error(`Living ${u.type} has ${u.figs} figures ${where}`);
+      }
+      if (!inBoard(u.c, u.r) || !Number.isInteger(u.c) || !Number.isInteger(u.r)) {
+        throw new Error(`uid ${u.uid} off-board at ${u.c},${u.r} ${where}`);
+      }
+      const k = idx(u.c, u.r);
+      if (occupied.has(k)) throw new Error(`Two living units on ${u.c},${u.r} ${where}`);
+      occupied.add(k);
+
+      /* The box holds 4 combat dice. Nothing may exceed that. */
+      const n = diceFor(u);
+      if (n < 1 || n > MAX_DICE) throw new Error(`${u.type} would roll ${n} dice ${where}`);
+    } else if (u.figs !== 0) {
+      throw new Error(`Dead uid ${u.uid} still has ${u.figs} figures ${where}`);
+    }
+  }
+
+  for (const side of [0, 1]) {
+    const kings = G.units.filter(u => u.side === side && u.type === "king").length;
+    if (kings !== 1) throw new Error(`Side ${side} has ${kings} kings ${where}`);
+  }
+
+  /* Dead units must be invisible to both the grid and the action list. */
+  const grid = buildGrid(G);
+  for (const u of G.units) {
+    if (!u.alive && grid[idx(u.c, u.r)] === u.uid) {
+      throw new Error(`Dead uid ${u.uid} still occupies the grid ${where}`);
+    }
+  }
+  if (!G.gameOver) {
+    for (const a of legalActions(G, grid, G.turn)) {
+      if (!byUid(G, a.uid).alive) throw new Error(`Dead uid ${a.uid} has a legal action ${where}`);
+    }
+  }
+
+  if (!G.gameOver && checkVictory(G)) {
+    throw new Error(`Victory reached but the game kept playing ${where}`);
+  }
+
+  if (!Number.isInteger(G.actionsLeft) || G.actionsLeft < 0 || G.actionsLeft > 2) {
+    throw new Error(`actionsLeft = ${G.actionsLeft} ${where}`);
+  }
+  if (G.turn !== 0 && G.turn !== 1) throw new Error(`turn = ${G.turn} ${where}`);
+}
+
+function assertSerialisable() {
+  const round = JSON.parse(JSON.stringify(G));
+  if (JSON.stringify(round) !== JSON.stringify(G)) throw new Error("G does not round-trip through JSON");
+}
+
+/* ============================================================
+   HEADLESS SIM — random legal moves, both sides. This is a
+   crash-and-termination harness, NOT a balance harness: the
+   numbers are Larry Harris's and tuning them is exactly what
+   this port exists to avoid. What it can legitimately reveal is
+   a MISREAD rule.
+   ============================================================ */
+function playRandomGame(seed) {
+  newGame(seed);
+  HARNESS.watermark = {};
+  HARNESS.expectedUnits = G.units.length;
+  if (!HARNESS.tally) HARNESS.resetTally();
+  let steps = 0;
+
+  while (!G.gameOver) {
+    if (++steps > 20000) throw new Error(`Runaway at round ${G.round} seed ${seed}`);
+
+    const v = checkVictory(G);
+    if (v) { G.result = v; G.gameOver = true; break; }
+    if (G.round > G.cfg.roundCap) { G.result = { winner: null, reason: "cap" }; G.gameOver = true; break; }
+
+    const grid = buildGrid(G);
+    const acts = legalActions(G, grid, G.turn);
+    if (!acts.length || G.actionsLeft <= 0) { endTurn(G); assertInvariants(); continue; }
+
+    const chosen = pickWeighted(acts);
+    HARNESS.tally.actions[chosen.kind] = (HARNESS.tally.actions[chosen.kind] || 0) + 1;
+    applyAction(G, chosen);
+
+    if (chosen.kind === "attack") {
+      const d = G.dice;
+      HARNESS.tally.attacks++;
+      HARNESS.tally.hits += d.hits;
+      HARNESS.tally.figsRemoved += d.removed;
+      if (d.panicSteps) HARNESS.tally.panics++;
+      if (d.victimRetreat) HARNESS.tally.victimRetreats++;
+      if (d.duel) HARNESS.tally.duels++;
+    }
+
+    /* Victory must be recorded BEFORE the invariants run: an action can end
+       the game, and "gameOver === (checkVictory() !== null)" is one of them. */
+    const won = checkVictory(G);
+    if (won) { G.result = won; G.gameOver = true; }
+
+    assertInvariants();
+    if (steps % 20 === 0) assertSerialisable();
+  }
+  assertInvariants();
+  return { seed, steps, rounds: G.round, result: G.result,
+           survivors: [livingOf(G, 0).length, livingOf(G, 1).length] };
+}
+
+/* Uniform-random selection is a terrible driver: every unit always offers
+   three Turn options and rarely an Attack, so 85% of actions are spent
+   turning in place and the engine is barely exercised. This still picks
+   at random -- it is not an AI and makes no positional judgement -- but it
+   prefers acting over fidgeting, which is what makes the sim reach combat,
+   panic and victory at all. */
+function pickWeighted(acts) {
+  const attacks = acts.filter(a => a.kind === "attack");
+  if (attacks.length && rnd() < 0.75) return pickOne(attacks);
+  const moves = acts.filter(a => a.kind === "move");
+  if (moves.length && rnd() < 0.80) return pickOne(moves);
+  return pickOne(acts);
+}
+
+function runSim(n, startSeed) {
+  const t0 = Date.now();
+  HARNESS.resetTally();
+  const out = { games: 0, crashes: [], byReason: {}, winsBySide: { 0: 0, 1: 0 },
+                rounds: [], firstStrikeWins: 0, steps: [] };
+  for (let i = 0; i < n; i++) {
+    const seed = (startSeed || 1) + i;
+    try {
+      const r = playRandomGame(seed);
+      out.games++;
+      out.rounds.push(r.rounds);
+      out.steps.push(r.steps);
+      out.byReason[r.result.reason] = (out.byReason[r.result.reason] || 0) + 1;
+      if (r.result.winner !== null) {
+        out.winsBySide[r.result.winner]++;
+        if (r.result.winner === G.first) out.firstStrikeWins++;
+      }
+    } catch (e) {
+      out.crashes.push({ seed, error: e.message });
+    }
+  }
+  const avg = a => a.length ? +(a.reduce((s, v) => s + v, 0) / a.length).toFixed(1) : 0;
+  return {
+    games: out.games, crashes: out.crashes, byReason: out.byReason,
+    winsBySide: out.winsBySide,
+    firstStrikeWinRate: out.games ? +(out.firstStrikeWins / out.games).toFixed(3) : 0,
+    avgRounds: avg(out.rounds), minRounds: Math.min(...out.rounds), maxRounds: Math.max(...out.rounds),
+    avgSteps: avg(out.steps),
+    combat: HARNESS.tally,
+    ms: Date.now() - t0,
+  };
+}
+
+window.__PH = {
+  get G() { return G; },
+  newGame, runSim, playRandomGame, ruleTests, assertInvariants, checkVictory,
+  legalActions, buildGrid, UNIT_DEFS, DICE_DIST,
+};
+
+/* ============================================================
+   RULE TESTS — hand-built positions for the rules random play
+   cannot reach. A full 4-dice base suffers a total panic once in
+   1296 attacks, so the retreat cascade -- the single riskiest
+   piece of this engine -- is effectively untested by simulation.
+   These force the dice instead.
+   ============================================================ */
+
+function testPosition(specs) {
+  G = {
+    v: 1, seed: 1, rng: 1,
+    cfg: { setup: "basic", massiveInfantry: false, partialBases: true, roundCap: 60 },
+    phase: "play", step: "test", round: 1, turn: 0, actionsLeft: 2, first: 0,
+    units: [], dice: null, log: [], gameOver: false, result: null, nextUid: 1,
+  };
+  for (const s of specs) G.units.push(makeUnit(s.side, s.type, s.figs, s.c, s.r, s.face));
+  return G.units;
+}
+function force(faces) { HARNESS.forceFaces = faces.slice(); }
+function attackWith(atk, def) {
+  const res = resolveAttack(G, buildGrid(G), atk, def);
+  if (res.removed) applyRemoval(G, def, res.removed);
+  if (res.panicSteps) panicRetreat(G, atk, res.panicSteps, 0);
+  if (res.victimRetreat && def.alive) panicRetreat(G, def, res.victimRetreat, 0);
+  return res;
+}
+function at(c, r) { return unitAt(G, buildGrid(G), c, r); }
+
+const RULE_TESTS = [
+  ["mounted units stop before a blocker and may halt anywhere short of it", () => {
+    const [kn] = testPosition([
+      { side: 0, type: "knight", figs: 2, c: 4, r: 7, face: N },
+      { side: 0, type: "infantry", figs: 4, c: 4, r: 4, face: N },
+    ]);
+    const dests = moveSquares(G, buildGrid(G), kn).map(m => m.r);
+    return JSON.stringify(dests) === JSON.stringify([6, 5]);
+  }],
+
+  ["foot units move exactly one square per action", () => {
+    const [inf] = testPosition([{ side: 0, type: "infantry", figs: 4, c: 4, r: 7, face: N }]);
+    return moveSquares(G, buildGrid(G), inf).length === 1;
+  }],
+
+  ["Heavy Infantry pays 2 actions to move and 2 to turn, but 1 to attack", () => {
+    const [hv] = testPosition([{ side: 0, type: "heavy", figs: 2, c: 4, r: 4, face: N }]);
+    return actionCost(hv, "move") === 2 && actionCost(hv, "turn") === 2 && actionCost(hv, "attack") === 1;
+  }],
+
+  ["Heavy Infantry attacks all eight neighbours, facing ignored", () => {
+    const [hv] = testPosition([
+      { side: 0, type: "heavy", figs: 2, c: 4, r: 4, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 3, r: 3, face: S },   /* diagonal */
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 5, face: N },   /* directly behind */
+      { side: 1, type: "infantry", figs: 4, c: 5, r: 4, face: N },   /* directly beside */
+    ]);
+    return attackTargets(G, buildGrid(G), hv).length === 3;
+  }],
+
+  ["an Archer's block is 9 squares, 3 wide by 3 deep, starting immediately ahead", () => {
+    const [ar] = testPosition([{ side: 0, type: "archer", figs: 4, c: 4, r: 7, face: N }]);
+    const z = attackZone(ar);
+    const rows = [...new Set(z.map(s => s.r))].sort();
+    const cols = [...new Set(z.map(s => s.c))].sort();
+    return z.length === 9 &&
+      JSON.stringify(rows) === JSON.stringify([4, 5, 6]) &&
+      JSON.stringify(cols) === JSON.stringify([3, 4, 5]);
+  }],
+
+  ["Archers fire over the heads of intervening units", () => {
+    const [ar] = testPosition([
+      { side: 0, type: "archer", figs: 4, c: 4, r: 7, face: N },
+      { side: 0, type: "infantry", figs: 4, c: 4, r: 6, face: N },   /* own front rank */
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 5, face: S },   /* the target beyond it */
+    ]);
+    const t = attackTargets(G, buildGrid(G), ar);
+    return t.length === 1 && t[0].side === 1;
+  }],
+
+  ["melee requires the attacker to be facing its target", () => {
+    const [inf] = testPosition([
+      { side: 0, type: "infantry", figs: 4, c: 4, r: 4, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 5, face: N },   /* behind the attacker */
+    ]);
+    if (attackTargets(G, buildGrid(G), inf).length !== 0) return false;
+    inf.face = S;
+    return attackTargets(G, buildGrid(G), inf).length === 1;
+  }],
+
+  ["a Knight needs two hits in the same attack per figure removed", () => {
+    const out = [];
+    for (const [axes, expect] of [[1, 0], [2, 1], [3, 1], [4, 2]]) {
+      const [inf, kn] = testPosition([
+        { side: 0, type: "infantry", figs: 4, c: 4, r: 5, face: N },
+        { side: 1, type: "knight", figs: 2, c: 4, r: 4, face: S },
+      ]);
+      force(Array(axes).fill(AXE).concat(Array(4 - axes).fill(ARROW)));
+      out.push(attackWith(inf, kn).removed === expect);
+    }
+    return out.every(Boolean);
+  }],
+
+  ["Archers hit on arrows, not axes", () => {
+    const [ar, inf] = testPosition([
+      { side: 0, type: "archer", figs: 4, c: 4, r: 6, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 5, face: S },
+    ]);
+    force([AXE, AXE, AXE, ARROW]);
+    return attackWith(ar, inf).removed === 1;
+  }],
+
+  ["Peasants hit with whichever symbol they rolled most of", () => {
+    const [pea, inf] = testPosition([
+      { side: 0, type: "peasant", figs: 4, c: 4, r: 5, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 4, face: S },
+    ]);
+    force([ARROW, ARROW, ARROW, AXE]);
+    return attackWith(pea, inf).removed === 3;
+  }],
+
+  ["a total panic discards every hit rolled", () => {
+    const [inf, foe] = testPosition([
+      { side: 0, type: "infantry", figs: 2, c: 4, r: 5, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 4, face: S },
+    ]);
+    force([PANIC, PANIC]);
+    const res = attackWith(inf, foe);
+    return res.hits === 0 && res.removed === 0 && foe.figs === 4 && res.panicSteps === 1;
+  }],
+
+  ["a panicking unit retreating off the board is eliminated", () => {
+    const [inf, foe] = testPosition([
+      { side: 0, type: "infantry", figs: 2, c: 4, r: 0, face: S },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 1, face: N },
+    ]);
+    force([PANIC, PANIC]);
+    attackWith(inf, foe);
+    return !inf.alive && inf.figs === 0;
+  }],
+
+  ["a panicking unit retreating into an enemy is eliminated", () => {
+    const [inf, foe, block] = testPosition([
+      { side: 0, type: "infantry", figs: 2, c: 4, r: 4, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 3, face: S },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 5, face: N },
+    ]);
+    force([PANIC, PANIC]);
+    attackWith(inf, foe);
+    return !inf.alive && block.alive && block.r === 5;
+  }],
+
+  ["a panicking unit retreating into its own King is eliminated, and the King does not move", () => {
+    const [inf, foe, king] = testPosition([
+      { side: 0, type: "infantry", figs: 2, c: 4, r: 4, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 3, face: S },
+      { side: 0, type: "king", figs: 1, c: 4, r: 5, face: N },
+    ]);
+    force([PANIC, PANIC]);
+    attackWith(inf, foe);
+    return !inf.alive && king.alive && king.r === 5 && king.face === N;
+  }],
+
+  ["a panicking unit retreating into a Mercenary is eliminated", () => {
+    const [inf, foe, merc] = testPosition([
+      { side: 0, type: "infantry", figs: 2, c: 4, r: 4, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 3, face: S },
+      { side: 0, type: "mercenary", figs: 2, c: 4, r: 5, face: N },
+    ]);
+    force([PANIC, PANIC]);
+    attackWith(inf, foe);
+    return !inf.alive && merc.alive && merc.r === 5;
+  }],
+
+  ["a panicking unit shoves an ordinary ally, which panics in turn", () => {
+    const [inf, foe, ally] = testPosition([
+      { side: 0, type: "infantry", figs: 2, c: 4, r: 4, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 3, face: S },
+      { side: 0, type: "infantry", figs: 4, c: 4, r: 5, face: N },
+    ]);
+    force([PANIC, PANIC]);
+    attackWith(inf, foe);
+    /* attacker about-faces to S and takes r=5; the ally about-faces and falls back to r=6 */
+    return inf.alive && inf.r === 5 && inf.face === S &&
+           ally.alive && ally.r === 6 && ally.face === S;
+  }],
+
+  ["panic chains through two allies at once", () => {
+    const [inf, foe, a1, a2] = testPosition([
+      { side: 0, type: "infantry", figs: 2, c: 4, r: 3, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 2, face: S },
+      { side: 0, type: "infantry", figs: 4, c: 4, r: 4, face: N },
+      { side: 0, type: "infantry", figs: 4, c: 4, r: 5, face: N },
+    ]);
+    force([PANIC, PANIC]);
+    attackWith(inf, foe);
+    return inf.r === 4 && a1.r === 5 && a2.r === 6 && [inf, a1, a2].every(u => u.alive);
+  }],
+
+  ["a lone Infantryman against a Knight must roll two axes in succession", () => {
+    const mk = () => testPosition([
+      { side: 0, type: "infantry", figs: 1, c: 4, r: 5, face: N },
+      { side: 1, type: "knight", figs: 2, c: 4, r: 4, face: S },
+    ]);
+    let u = mk(); force([AXE, AXE]);
+    const win = attackWith(u[0], u[1]);
+    u = mk(); force([AXE, ARROW]);
+    const miss = attackWith(u[0], u[1]);
+    u = mk(); force([PANIC]);
+    const pan = attackWith(u[0], u[1]);
+    return win.duel && win.removed === 1 && miss.removed === 0 && pan.panicSteps === 1 && !u[0].alive === false;
+  }],
+
+  ["a Mercenary never panics; its victim about-faces and retreats once per PANIC", () => {
+    const [merc, foe] = testPosition([
+      { side: 0, type: "mercenary", figs: 2, c: 4, r: 5, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 4, face: S },
+    ]);
+    force([PANIC, PANIC, PANIC, PANIC]);
+    const res = attackWith(merc, foe);
+    /* r=4 back four squares lands exactly on r=0, the far edge: shoved the
+       length of the board but still on it. */
+    return res.panicSteps === 0 && res.victimRetreat === 4 &&
+           merc.alive && merc.r === 5 && merc.face === N &&
+           foe.alive && foe.r === 0 && foe.face === N && foe.figs === 4;
+  }],
+
+  ["a Mercenary can shove its victim clean off the board", () => {
+    const [merc, foe] = testPosition([
+      { side: 0, type: "mercenary", figs: 2, c: 4, r: 4, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 3, face: S },
+    ]);
+    force([PANIC, PANIC, PANIC, PANIC]);
+    attackWith(merc, foe);
+    return !foe.alive && foe.figs === 0 && merc.alive;
+  }],
+
+  ["a Mercenary cannot shove an enemy King or an enemy Mercenary", () => {
+    const [merc, king] = testPosition([
+      { side: 0, type: "mercenary", figs: 2, c: 4, r: 5, face: N },
+      { side: 1, type: "king", figs: 1, c: 4, r: 4, face: S },
+    ]);
+    force([PANIC, PANIC, PANIC, PANIC]);
+    const res = attackWith(merc, king);
+    return res.victimRetreat === 0 && king.alive && king.r === 4 && king.face === S;
+  }],
+
+  ["victory when the enemy King is killed", () => {
+    const [inf, king] = testPosition([
+      { side: 0, type: "infantry", figs: 4, c: 4, r: 5, face: N },
+      { side: 1, type: "king", figs: 1, c: 4, r: 4, face: S },
+      { side: 1, type: "infantry", figs: 4, c: 0, r: 0, face: S },
+      { side: 0, type: "king", figs: 1, c: 8, r: 7, face: N },
+    ]);
+    force([AXE, AXE, AXE, AXE]);
+    attackWith(inf, king);
+    const v = checkVictory(G);
+    return !king.alive && v && v.winner === 0 && v.reason === "king";
+  }],
+
+  ["victory when the enemy King is left standing alone", () => {
+    const [inf, last] = testPosition([
+      { side: 0, type: "infantry", figs: 4, c: 4, r: 5, face: N },
+      { side: 1, type: "infantry", figs: 1, c: 4, r: 4, face: S },
+      { side: 1, type: "king", figs: 1, c: 0, r: 0, face: S },
+      { side: 0, type: "king", figs: 1, c: 8, r: 7, face: N },
+    ]);
+    force([AXE, AXE, AXE, AXE]);
+    attackWith(inf, last);
+    const v = checkVictory(G);
+    return !last.alive && v && v.winner === 0 && v.reason === "alone";
+  }],
+
+  ["a unit may not attack twice in the same turn, but another unit may", () => {
+    const [a, b] = testPosition([
+      { side: 0, type: "infantry", figs: 4, c: 4, r: 5, face: N },
+      { side: 0, type: "infantry", figs: 4, c: 5, r: 5, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 4, face: S },
+      { side: 1, type: "infantry", figs: 4, c: 5, r: 4, face: S },
+    ]);
+    G.actionsLeft = 2;
+    a.attackedThisTurn = true;
+    const acts = legalActions(G, buildGrid(G), 0).filter(x => x.kind === "attack");
+    return acts.length === 1 && acts[0].uid === b.uid;
+  }],
+];
+
+function ruleTests() {
+  const results = [];
+  for (const [name, fn] of RULE_TESTS) {
+    let pass, err = null;
+    try { pass = fn(); } catch (e) { pass = false; err = e.message; }
+    HARNESS.forceFaces = null;
+    results.push({ name, pass: !!pass, err });
+  }
+  const failed = results.filter(r => !r.pass);
+  return { total: results.length, passed: results.length - failed.length, failed };
+}
+
+/* ============================================================
    TABLE SELF-CHECK — runs at load and THROWS. These are the
    printed facts, so a violation means the tables were mistyped,
    not that the game is unbalanced. A check nobody has watched
@@ -392,12 +1221,6 @@ function validateTables() {
    random-mover sim in B3 is green.
    ============================================================ */
 "use strict";
-
-/* The board. 9 is printed in the rulebook's setup diagram; 8 was
-   counted on the physical board and corroborated five ways. Every
-   online source says 9x10, traced to one hedged line in a 1998
-   InQuest Gamer review. It is wrong. */
-const W = 9, H = 8;
 
 const UI = { reducedMotion: false };
 
