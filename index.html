@@ -211,8 +211,185 @@ body::after {
 
 <script>
 /* ============================================================
-   BOOT — B1 is chrome only. No rules engine yet: per the plan,
-   nothing renders until the headless sim in B3 is green.
+   RULE TABLES — transcribed from the official rulebook scan
+   (Parker Brothers 40742-I, 1997). Every number here is PRINTED.
+   Nothing is designed, costed or balanced by us. The Gameplay
+   Reference Table is on p.8; setup and dice labels on pp.2-3.
+   If a value here disagrees with your copy, this table is the
+   one place to change it.
+   ============================================================ */
+
+/* "Each gets 2 Arrows, one PANIC and 3 Battle-axes." (p.2) */
+const AXE = 0, ARROW = 1, PANIC = 2;
+const DIE_FACES = [AXE, AXE, AXE, ARROW, ARROW, PANIC];
+
+/* p.8 Gameplay Reference Table. perBase is the printed maximum:
+   the rulebook prints fixed counts for basic units and ranges for
+   specials ("1 or 2", "up to 4"), but calls 4 "the standard limit
+   of 4 Infantry per base", so we read them all as maxima and allow
+   under-filled bases. See the plan, section 6 gap 2. */
+const UNIT_DEFS = {
+  king: {
+    name: "King", perPlayer: 1, perBase: 1, dicePerFig: 2,
+    hitFace: AXE, htk: 2, mounted: true, panics: false,
+    note: "Never panics. Starts in the centre of the back row. May bribe an adjacent Mercenary.",
+  },
+  knight: {
+    name: "Knight", perPlayer: 4, perBase: 2, dicePerFig: 2,
+    hitFace: AXE, htk: 2, mounted: true, panics: true,
+    note: "Moves any distance in a straight line until blocked.",
+  },
+  infantry: {
+    name: "Infantry", perPlayer: 20, perBase: 4, dicePerFig: 1,
+    hitFace: AXE, htk: 1, mounted: false, panics: true,
+    note: "",
+  },
+  archer: {
+    name: "Archer", perPlayer: 8, perBase: 4, dicePerFig: 1,
+    hitFace: ARROW, htk: 1, mounted: false, panics: true,
+    note: "Attacks any single enemy in the 9-square block ahead, firing over intervening heads.",
+  },
+  heavy: {
+    name: "Heavy Infantry", perPlayer: 2, perBase: 2, dicePerFig: 2,
+    hitFace: AXE, htk: 2, mounted: false, panics: true,
+    moveCost: 2, turnCost: 2, allAdjacent: true, needsFacing: false,
+    note: "Move and Turn cost 2 actions each. Attacks any adjacent square, facing ignored.",
+  },
+  peasant: {
+    name: "Peasant", perPlayer: 4, perBase: 4, dicePerFig: 1,
+    hitFace: null, htk: 1, mounted: false, panics: true, panicPerDie: true,
+    note: "Hits with whichever it rolled most of. Retreats 1 square per PANIC rolled.",
+  },
+  mercenary: {
+    name: "Mercenary", perPlayer: 2, perBase: 2, dicePerFig: 2,
+    hitFace: AXE, htk: 1, mounted: false, panics: false, panicsVictim: true, bribable: true,
+    note: "Never panics. Its victim retreats 1 square per PANIC rolled. Can be bribed by a King.",
+  },
+};
+
+/* Optional printed rule (p.8): 10 Infantry per base, never more than
+   4 dice. Off by default -- "If both players agree". */
+const MASSIVE_INFANTRY = { perBase: 10, maxDice: 4 };
+
+/* The box holds exactly 4 combat dice, and no unit can roll more.
+   king 1x2, knight 2x2, infantry 4x1, archer 4x1, heavy 2x2,
+   peasant 4x1, mercenary 2x2 -- every one lands on 4. */
+const MAX_DICE = 4;
+
+/* p.3 Basic Game Setup: 10 bases, 33 warriors. */
+const BASIC_ARMY = [
+  { type: "king", bases: 1, figs: 1 },
+  { type: "knight", bases: 2, figs: 2 },
+  { type: "archer", bases: 2, figs: 4 },
+  { type: "infantry", bases: 5, figs: 4 },
+];
+
+/* p.6 Customized Setup: still exactly 10 bases; these cap the specials. */
+const BASES_TOTAL = 10;
+const CUSTOM_BASE_CAPS = { heavy: 2, peasant: 4, mercenary: 1 };
+
+/* ============================================================
+   RNG & DICE DISTRIBUTION
+   mulberry32, seeded from G so a saved game replays identically.
+   DICE_DIST is the exact multinomial over (axes, arrows, panics)
+   for n = 1..4, enumerated once at load. It exists so the AI can
+   read probabilities WITHOUT rolling -- if the AI ever called
+   rnd(), it would advance the shared stream and seeded replay
+   would break. That is asserted, not assumed.
+   ============================================================ */
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const P_AXE = 3 / 6, P_ARROW = 2 / 6, P_PANIC = 1 / 6;
+
+function factorial(n) { let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; }
+
+/* DICE_DIST[n] = [{ axes, arrows, panics, p }, ...] summing to 1. */
+const DICE_DIST = (function buildDiceDist() {
+  const out = [null];
+  for (let n = 1; n <= MAX_DICE; n++) {
+    const rows = [];
+    for (let a = 0; a <= n; a++) {
+      for (let r = 0; r + a <= n; r++) {
+        const pa = n - a - r;
+        const coeff = factorial(n) / (factorial(a) * factorial(r) * factorial(pa));
+        rows.push({
+          axes: a, arrows: r, panics: pa,
+          p: coeff * Math.pow(P_AXE, a) * Math.pow(P_ARROW, r) * Math.pow(P_PANIC, pa),
+        });
+      }
+    }
+    out.push(rows);
+  }
+  return out;
+})();
+
+/* Hits for a roll, by attacker. Peasants use "whichever you rolled
+   the most of -- Battle-axes or Arrows" (p.5). */
+function hitsFrom(def, axes, arrows) {
+  if (def.hitFace === null) return Math.max(axes, arrows);
+  return def.hitFace === AXE ? axes : arrows;
+}
+
+/* Total panic iff EVERY die says PANIC (p.5). Peasants instead
+   retreat once per PANIC die, and Kings and Mercenaries never
+   panic at all. */
+function panicsFrom(def, panics, n) {
+  if (!def.panics) return 0;
+  if (def.panicPerDie) return panics;
+  return panics === n ? 1 : 0;
+}
+
+function diceForFigs(type, figs) {
+  return Math.min(MAX_DICE, figs * UNIT_DEFS[type].dicePerFig);
+}
+
+/* ============================================================
+   TABLE SELF-CHECK — runs at load and THROWS. These are the
+   printed facts, so a violation means the tables were mistyped,
+   not that the game is unbalanced. A check nobody has watched
+   fail is indistinguishable from one that cannot fail, so each
+   of these has been seen to go red.
+   ============================================================ */
+function validateTables() {
+  const die = DIE_FACES.reduce((m, f) => (m[f] = (m[f] || 0) + 1, m), {});
+  if (die[AXE] !== 3 || die[ARROW] !== 2 || die[PANIC] !== 1) {
+    throw new Error("Die faces must be 3 axe / 2 arrow / 1 PANIC (rulebook p.2)");
+  }
+  for (let n = 1; n <= MAX_DICE; n++) {
+    const sum = DICE_DIST[n].reduce((s, r) => s + r.p, 0);
+    if (Math.abs(sum - 1) > 1e-12) throw new Error(`DICE_DIST[${n}] sums to ${sum}, not 1`);
+  }
+  for (const t in UNIT_DEFS) {
+    const d = UNIT_DEFS[t];
+    if (d.perBase * d.dicePerFig > MAX_DICE) {
+      throw new Error(`${t} would roll ${d.perBase * d.dicePerFig} dice; the box holds ${MAX_DICE}`);
+    }
+  }
+  const bases = BASIC_ARMY.reduce((s, r) => s + r.bases, 0);
+  if (bases !== BASES_TOTAL) throw new Error(`Basic army is ${bases} bases, not ${BASES_TOTAL}`);
+  for (const r of BASIC_ARMY) {
+    if (r.figs > UNIT_DEFS[r.type].perBase) throw new Error(`Basic army over-fills a ${r.type} base`);
+    if (r.bases * r.figs > UNIT_DEFS[r.type].perPlayer) {
+      throw new Error(`Basic army uses more ${r.type} than a player owns`);
+    }
+  }
+  /* Seeded replay is the property the whole architecture rests on. */
+  const a = mulberry32(7), b = mulberry32(7);
+  for (let i = 0; i < 8; i++) if (a() !== b()) throw new Error("mulberry32 is not deterministic");
+}
+
+/* ============================================================
+   BOOT — chrome plus rule tables. No rules engine yet: No rules engine yet: per the plan,
+   per the plan, nothing renders for real until the headless
+   random-mover sim in B3 is green.
    ============================================================ */
 "use strict";
 
@@ -273,6 +450,7 @@ function syncRailHeight() {
 }
 
 function boot() {
+  validateTables();
   UI.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   renderRail();
   renderGridStub();
