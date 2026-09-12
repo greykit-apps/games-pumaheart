@@ -51,12 +51,13 @@ Win by killing the enemy King, or by leaving it standing alone on the field.
 
 ## Features
 
-- **Both printed setups.** The Basic Game's fixed opening, and the Customised Setup where you
-  muster your own ten bases from the figures you own — and then **place every one of them
-  yourself**. Your King holds the centre of the back row; everything else goes anywhere on your
-  two ranks, facing wherever you choose. Bunch in the middle or send the riders wide to turn a
-  flank. In hot-seat both plans are laid in secret, behind the curtain that stands in for the
-  rulebook's upright game box.
+- **You muster and place your own army.** Ten bases built from the figures you own, then
+  **every one of them placed by you**: your King holds the centre of the back row, everything
+  else goes anywhere on your two ranks, facing wherever you choose. Bunch in the middle or send
+  the riders wide to turn a flank. Leave the muster and the line exactly as they stand and you
+  get the printed Basic Game, square for square — which is why there is no separate "basic"
+  mode to choose. In hot-seat both plans are laid in secret, behind the curtain that stands in
+  for the rulebook's upright game box.
 - **All seven warriors**, including the Extra Forces: Heavy Infantry that strikes any adjacent
   square without facing it, Peasants that panic once per PANIC die rolled, and Mercenaries that
   panic their victims, never panic themselves, and **change sides** when an enemy King bribes
