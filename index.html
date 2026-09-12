@@ -76,7 +76,14 @@
   --deploy-gold: rgba(255, 176, 0, 0.07);   /* side 1 deployment ranks */
 
   /* Floors at 32px so a 9-wide board fits a 380px viewport. */
-  --sq: clamp(32px, min(9vw, 7vh), 58px);
+  /* Nine files have to clear the rail and the gaps, eight ranks the window.
+     The old ceiling of 58px stopped the board growing at all on a desktop
+     and left better than half the viewport empty below it. */
+  --sq: clamp(32px, min(calc((100vw - 372px) / 9.6), 9.4vh), 96px);
+  /* Deployment adds a bar under the board carrying the only way out of the
+     phase, so the board yields the height rather than pushing "Take the
+     field" off the bottom of the screen. */
+  --sq-deploy: clamp(30px, min(calc((100vw - 372px) / 9.6), 6.6vh), 72px);
 }
 
 * { box-sizing: border-box; }
@@ -124,23 +131,79 @@ body::after {
 }
 .box.is-live { border-color: var(--amber-dim); }
 
+/* Progressive disclosure, native. The three house rules carry about 150 words
+   on where the 1997 rulebook is silent -- which is the port's whole argument,
+   and exactly the wrong thing to hand someone who has never heard of
+   Lionheart at the moment they are trying to start a game. */
+.disclose { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 10px; }
+.disclose > summary {
+  cursor: pointer; color: var(--text-dim); list-style: none;
+  padding: 4px 0; user-select: none;
+}
+.disclose > summary::-webkit-details-marker { display: none; }
+.disclose > summary::before { content: "+ "; color: var(--amber); }
+.disclose[open] > summary::before { content: "\2212 "; }
+.disclose > summary:hover, .disclose > summary:focus-visible { color: var(--text); }
+
 /* ============================================================
    LAYOUT — board centre, status panel beside it, battle-plan
    bar under it during deployment. Collapses to one column on a
    phone.
    ============================================================ */
+#app.is-deploying { --sq: var(--sq-deploy); }
 #app {
   display: grid; gap: 12px; padding: 12px;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  grid-template-areas: "hud hud" "board side" "bar side";
-  align-content: start; min-height: 100%;
+  /* The board column sizes to the board, so the FIELD frame stops being a
+     1300px box around a 520px board, and the rail sits against it instead of
+     400px away. justify-content centres the pair rather than stretching it. */
+  grid-template-columns: auto minmax(260px, 320px);
+  grid-template-areas: "hud hud" "board side" "touch side" "coach side" "bar side";
+  align-content: start; justify-content: center; min-height: 100%;
 }
-#hud { grid-area: hud; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+#hud { grid-area: hud; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-width: 0; }
 #hud .brand { color: var(--amber); letter-spacing: 0.22em; text-transform: uppercase; }
 #hud .brand b { color: var(--green); font-weight: 700; }
 #board-wrap { grid-area: board; display: flex; justify-content: center; position: relative; }
 #grid { margin: 0 auto; }
 #side { grid-area: side; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* The field report takes whatever height the board leaves, rather than
+   stopping at 30vh and leaving the rail half empty on a tall screen. */
+#log { flex: 1 1 auto; min-height: 120px; display: flex; flex-direction: column; }
+#log-list { flex: 1 1 auto; }
+
+/* Turning on touch. Hidden on a mouse, where the on-base handles are better:
+   they sit on the corner they rotate and need no second place to look. */
+#touchbar { grid-area: touch; display: none; align-items: center; gap: 14px; justify-content: center; }
+#touchbar[hidden] { display: none !important; }
+.turnbtn {
+  width: 52px; height: 46px; flex: none;
+  background: none; border: 1px solid var(--border); color: var(--amber);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.turnbtn svg { width: 26px; height: 26px; overflow: visible; }
+.turnbtn .arc { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.turnbtn .head { fill: currentColor; stroke: none; }
+.turnbtn:active { color: var(--green); border-color: var(--amber-dim); }
+.turn-who { text-align: center; min-width: 9em; }
+.turn-who .dim { display: block; font-size: 12px; }
+
+/* THE COACH. One line, under the board, in the amber reserved for the thing
+   to look at -- not a modal, and never covering what it describes. */
+#coach {
+  grid-area: coach; display: flex; align-items: flex-start; gap: 12px;
+  border: 1px solid var(--amber-dim); padding: 8px 10px;
+  color: var(--amber); animation: coachIn 260ms var(--ease-out-expo) backwards;
+}
+/* display:flex beats the hidden attribute's default display:none, so the
+   empty frame sat under the board for every state that has no hint. */
+#coach[hidden] { display: none !important; }
+#coach p { margin: 0; flex: 1; }
+@keyframes coachIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.coach-x {
+  flex: none; background: none; border: 1px solid var(--border); color: var(--text-dim);
+  font: inherit; font-size: 12px; padding: 3px 8px; cursor: pointer;
+}
+.coach-x:hover, .coach-x:focus-visible { color: var(--text); border-color: var(--amber-dim); }
 
 
 
@@ -278,13 +341,38 @@ body::after {
 .sq.dzone { outline: 1px solid var(--green-dark); outline-offset: -1px; }
 
 
-/* Menu, help and tutorial share the overlay shell */
-#menu, #help, #tutorial {
+/* Menu and help share the overlay shell */
+/* The ending sits over the board rather than replacing it -- the final
+   position is the last thing worth looking at, so it stays lit behind. */
+#over {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 10, 10, 0.72); padding: 20px;
+  animation: backdropIn 200ms var(--ease-out-quart);
+}
+#over[hidden] { display: none !important; }
+.over-card {
+  min-width: 300px; max-width: 420px; background: var(--bg);
+  padding: 22px 24px 18px; text-align: center;
+  animation: overIn 320ms var(--ease-out-expo);
+}
+@keyframes overIn { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
+.over-who { margin: 6px 0 2px; font-size: 21px; letter-spacing: 0.1em; text-transform: uppercase; }
+.over-why { margin: 0 0 16px; color: var(--text-dim); }
+.over-count {
+  display: grid; grid-template-columns: auto auto; gap: 3px 14px;
+  justify-content: center; margin: 0 0 18px; text-align: left;
+}
+.over-count dt, .over-count dd { margin: 0; }
+.over-count dd { color: var(--text-dim); }
+.over-card .muster-actions { justify-content: center; }
+
+#menu, #help {
   position: fixed; inset: 0; z-index: 8200; display: flex;
   align-items: center; justify-content: center; background: rgba(10,10,10,0.94);
   overflow: auto; padding: 16px;
 }
-#menu[hidden], #help[hidden], #tutorial[hidden] { display: none !important; }
+#menu[hidden], #help[hidden] { display: none !important; }
 .menu-card { background: var(--bg); min-width: 340px; max-width: 560px; }
 .help-card { background: var(--bg); max-width: 780px; }
 .tut-card { background: var(--bg); max-width: 420px; }
@@ -368,8 +456,27 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 .muster-actions { display: flex; gap: 10px; }
 .btn[disabled] { color: var(--text-dim); border-color: var(--panel-2); cursor: not-allowed; }
 .hud-new { display: flex; gap: 8px; margin-left: auto; }
-.hud-new .cmd { color: var(--text-dim); cursor: pointer; padding: 2px 6px; border: 1px solid var(--border); }
+/* Six identical ghost buttons said nothing about which one you want. Ending
+   your turn is the only command play needs, so it is the only one that looks
+   like a command; the two toggles read as settings; starting over -- the one
+   that throws the game away -- sits last and quietest, not first. */
+.hud-new { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
+/* flex:none, or a narrow window shrinks the long ones below their text and
+   clips them instead of wrapping the row. */
+.hud-new .cmd { flex: none; white-space: nowrap; color: var(--text-dim); cursor: pointer; padding: 2px 6px; border: 1px solid var(--border); }
 .hud-new .cmd:hover { color: var(--text); border-color: var(--amber-dim); }
+.hud-new .cmd.is-primary { color: var(--amber); border-color: var(--amber-dim); }
+.hud-new .cmd.is-primary:hover { color: var(--bg); background: var(--amber); border-color: var(--amber); }
+.hud-new .cmd.is-toggle { border-style: dashed; }
+.hud-new .cmd.is-quiet { border-color: transparent; }
+.hud-new .cmd.is-quiet:hover { border-color: var(--border); }
+/* A command that cannot act says so, instead of swallowing the click. */
+.hud-new .cmd.is-off,
+.hud-new .cmd.is-primary.is-off { opacity: 0.38; cursor: default; color: var(--text-dim); border-color: var(--border); }
+.hud-new .cmd.is-off:hover { color: var(--text-dim); border-color: var(--border); background: none; }
+/* The toggles keep their marker so the gap between them does not read as a
+   missing button when the separator disappears. */
+
 
 /* Hot-seat handover curtain */
 #curtain {
@@ -384,6 +491,10 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   padding: 8px 18px; cursor: pointer;
 }
 .btn:hover { border-color: var(--amber-dim); }
+/* Every button in a card being identical leaves the player hunting for the
+   one that starts the thing. */
+.btn.btn-go { color: var(--amber); border-color: var(--amber-dim); }
+.btn.btn-go:hover { color: var(--bg); background: var(--amber); border-color: var(--amber); }
 
 /* ============================================================
    FEEDBACK
@@ -417,8 +528,8 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
    ============================================================ */
 @keyframes backdropIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes cardIn { from { opacity: 0; transform: translateY(12px) scale(0.985); } to { opacity: 1; transform: none; } }
-#menu, #help, #tutorial, #muster, #curtain { animation: backdropIn 170ms var(--ease-out-quart); }
-#menu > *, #help > *, #tutorial > *, #muster > *, #curtain > * {
+#menu, #help, #muster, #curtain { animation: backdropIn 170ms var(--ease-out-quart); }
+#menu > *, #help > *, #muster > *, #curtain > * {
   animation: cardIn 280ms var(--ease-out-expo) backwards;
   animation-delay: 55ms;
 }
@@ -474,10 +585,9 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 
 /* Touch needs a real target, and a phone board is only 32px a square. */
 @media (pointer: coarse) {
-  /* Transparent, but the tap target stays a full 44px. */
-  .rot { width: 44px; height: 44px; top: -8px; }
-  .rot-left  { left: -12px; }
-  .rot-right { right: -12px; }
+  /* Off the base entirely -- see renderTouchbar(). */
+  .rots { display: none; }
+  #touchbar { display: flex; }
 }
 
 /* The board needs headroom so handles on the back rank are not clipped. */
@@ -596,12 +706,35 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 }
 
 @media (max-width: 760px) {
+  /* One column, so the rail no longer takes a share of the width. */
+  :root { --sq: clamp(30px, min(9.6vw, 8vh), 58px); }
+  /* The command row gets the full width to wrap in. Left as a flex item
+     beside the brand it was handed the leftovers and overflowed instead. */
+  #hud { display: block; }
+  /* A grid rather than a wrapping flex row: six commands land as two rows of
+     three at a width the labels cannot overflow, instead of flexbox deciding
+     "Speed: Measured" fits when it does not. */
+  .hud-new {
+    display: grid; width: 100%; margin-top: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+  }
+  .hud-new .cmd {
+    white-space: normal; text-align: center; justify-content: center;
+    padding: 6px 4px;
+  }
   #app {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "hud" "board" "side";
+    grid-template-areas: "hud" "board" "touch" "coach" "bar" "side";
+    justify-content: stretch;
   }
   /* The deploy bar rides under the board on a phone rather than floating. */
   #deploybar { order: 3; }
+  /* What just happened outranks what is selected: after an AI attack the
+     field report must not be a scroll away. */
+  #side { flex-direction: column; }
+  #log { order: 1; }
+  #status { order: 2; }
+  #log-list { max-height: 34vh; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -619,12 +752,12 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
     <span class="brand">Puma<b>Heart</b></span>
     <span id="hud-state"></span>
     <span class="hud-new">
-      <span class="cmd" data-act="menuOpen" role="button" tabindex="0">New game</span>
+      <span class="cmd is-primary" data-act="endTurn" role="button" tabindex="0" id="hud-end">End turn</span>
       <span class="cmd" data-act="undo" role="button" tabindex="0" id="hud-undo">Undo</span>
-      <span class="cmd" data-act="endTurn" role="button" tabindex="0">End turn</span>
       <span class="cmd" data-act="help" role="button" tabindex="0">Help</span>
-      <span class="cmd" data-act="speed" role="button" tabindex="0" id="hud-speed"></span>
-      <span class="cmd" data-act="mute" role="button" tabindex="0" id="hud-mute"></span>
+      <span class="cmd is-toggle" data-act="speed" role="button" tabindex="0" id="hud-speed"></span>
+      <span class="cmd is-toggle" data-act="mute" role="button" tabindex="0" id="hud-mute"></span>
+      <span class="cmd is-quiet" data-act="menuOpen" role="button" tabindex="0">New game</span>
     </span>
     <span id="hud-turn" class="sr-only" aria-live="polite"></span>
   </header>
@@ -646,6 +779,10 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
     </div>
   </aside>
 
+  <nav id="touchbar" hidden aria-label="Turn the selected unit"></nav>
+  <aside id="coach" hidden aria-live="polite"></aside>
+  <div id="over" hidden></div>
+
   <nav id="deploybar" class="box" hidden aria-label="Battle plan"></nav>
 
 </div>
@@ -653,7 +790,6 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 <div id="muster" hidden></div>
 <div id="menu" hidden></div>
 <div id="help" hidden></div>
-<div id="tutorial" hidden></div>
 <div id="announcements" class="sr-only" aria-live="polite"></div>
 
 <script>
@@ -695,7 +831,7 @@ const UNIT_DEFS = {
   king: {
     name: "King", perPlayer: 1, perBase: 1, dicePerFig: 2,
     hitFace: AXE, htk: 2, mounted: true, panics: false,
-    note: "Never panics. Starts in the centre of the back row. May bribe an adjacent Mercenary.",
+    note: "Never panics. May bribe an adjacent Mercenary.",
   },
   knight: {
     name: "Knight", perPlayer: 4, perBase: 2, dicePerFig: 2,
@@ -1491,7 +1627,7 @@ function runSim(n, startSeed) {
    they may only cost you the resume.
    ============================================================ */
 const SAVE_KEY = "pumaheart_save_v1";
-const TUTORIAL_KEY = "pumaheart_tutorial_v1";
+const COACH_KEY = "pumaheart_coach_v1";
 const MUTED_KEY = "pumaheart_muted_v1";
 const SPEED_KEY = "pumaheart_speed_v1";
 
@@ -1507,6 +1643,18 @@ function loadSave() {
   } catch (e) { return null; }
 }
 function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+
+/* Picks up exactly where the tab left off, mid-deploy or mid-turn. advance()
+   sorts out whose move it is: a human WAITs, a bot plays on. */
+function resumeGame(saved) {
+  if (!saved.units || !saved.players || !saved.phase) throw new Error("save is not a position");
+  G = saved;
+  UI.entering = false; UI.sel = null; UI.undo = []; UI.rects = null;
+  UI.cur = idx(4, H - 1);
+  log("Battle resumed.");
+  updateAll();
+  advance();
+}
 
 /* ============================================================
    PHASE MACHINE
@@ -1881,6 +2029,14 @@ function renderBoard() {
   }
 }
 
+function setCmdEnabled(id, on) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle("is-off", !on);
+  el.setAttribute("aria-disabled", on ? "false" : "true");
+  el.setAttribute("tabindex", on ? "0" : "-1");
+}
+
 function syncPrefsChrome() {
   const sp = document.getElementById("hud-speed");
   if (sp) sp.textContent = "Speed: " + SPEED_NAME[UI.speed];
@@ -1900,6 +2056,11 @@ function renderHUD() {
   if (sp) sp.textContent = "Speed: " + SPEED_NAME[UI.speed];
   const mu = document.getElementById("hud-mute");
   if (mu) mu.textContent = UI.muted ? "Sound off" : "Sound on";
+  /* Undo and End turn stand down when they cannot act -- at game over, while
+     the machine is animating, and before the first action of a turn. Undo in
+     particular looked live at every moment and swallowed the click. */
+  setCmdEnabled("hud-undo", canUndo() && myTurn());
+  setCmdEnabled("hud-end", G.phase === "play" && myTurn());
   if (G.phase === "deploy") { syncPrefsChrome(); return; }
   const p = G.players[G.turn];
   const pips = `<span class="acts" aria-hidden="true">${
@@ -2067,6 +2228,8 @@ function announce(msg) {
 
 function updateAll() {
   if (UI.headless || !G) return;
+  const app = document.getElementById("app");
+  if (app) app.classList.toggle("is-deploying", G.phase === "deploy");
   snapshotRects();
   renderBoard();
   playFlip();
@@ -2078,7 +2241,9 @@ function updateAll() {
   renderMuster();
   renderMenu();
   renderHelp();
-  renderTutorial();
+  renderTouchbar();
+  renderCoach();
+  renderOver();
   renderLog();
   restoreFocus();
 }
@@ -2237,10 +2402,10 @@ function selUnit() {
 }
 function deployTurn() {
   return G.phase === "deploy" && !UI.curtain && !UI.menuOpen && !UI.helpOpen &&
-         !UI.musterOpen && !UI.tutorialOpen;
+         !UI.musterOpen;
 }
 function myTurn() {
-  return !G.gameOver && isHuman(G.turn) && !UI.animating && !UI.curtain && !UI.musterOpen && !UI.menuOpen && !UI.helpOpen && !UI.tutorialOpen;
+  return !G.gameOver && isHuman(G.turn) && !UI.animating && !UI.curtain && !UI.musterOpen && !UI.menuOpen && !UI.helpOpen;
 }
 
 function selectUnit(uid) {
@@ -2305,7 +2470,7 @@ function deployActivate(c, r) {
   const u = unitAt(G, buildGrid(G), c, r);
   const sel = UI.sel ? byUid(G, UI.sel) : null;
 
-  if (sel && sel.side === side && !isAnchored(sel)) {
+  if (sel && sel.side === side) {
     if (deployPlace(sel, c, r)) { UI.cur = idx(sel.c, sel.r); updateAll(); return; }
   }
   if (u && u.side === side) {
@@ -2448,11 +2613,10 @@ const ACTS = {
   menuPick: el => { UI.menu[el.dataset.group] = el.dataset.value; updateAll(); },
   menuHouse: el => { UI.menu.house[el.dataset.key] = !UI.menu.house[el.dataset.key]; updateAll(); },
   helpClose: () => { UI.helpOpen = false; updateAll(); },
-  tutNext: () => {
-    if (UI.tutorialStep >= TUTORIAL.length - 1) { tutorialDone(); return; }
-    UI.tutorialStep++; updateAll();
-  },
-  tutSkip: tutorialDone,
+  coachGot: el => coachDismiss(el.dataset.id),
+  /* Same opponent, same difficulty, same house rules -- a rematch, not a
+     trip back through the setup screen. */
+  again: () => { clearSave(); openMuster(0); },
   newGame: () => { clearSave(); startGame(); },
 };
 
@@ -2478,7 +2642,6 @@ const KEYS = {
   Escape: () => {
     if (UI.helpOpen) { UI.helpOpen = false; updateAll(); return; }
     if (UI.menuOpen) { UI.menuOpen = false; updateAll(); return; }
-    if (UI.tutorialOpen) { tutorialDone(); return; }
     if (UI.musterOpen || UI.curtain) return;
     UI.sel = null;
     updateAll();
@@ -3082,7 +3245,7 @@ function renderMuster() {
 
   el.innerHTML = `<div class="box muster-card">
     <span class="box-label">Muster &mdash; <span class="side s${UI.musterSide}">${esc((G && G.players ? G.players[UI.musterSide].name : UI.musterSide === 0 ? "Green" : "Gold"))}</span></span>
-    <p class="dim">Ten bases take the field. The King holds the centre of the back row.
+    <p class="dim">Ten bases take the field.
       Leave it as it stands for the printed army, or muster your own.</p>
     <table class="muster">
       <thead><tr><th scope="col">Warrior</th><th scope="col">Bases</th><th scope="col">Per base</th><th scope="col">Figures</th></tr></thead>
@@ -3096,7 +3259,7 @@ function renderMuster() {
     <p class="why" role="status">${why ? esc(why) : "Ready."}</p>
     <div class="muster-actions">
       <button class="btn" data-act="musterPreset">Basic army</button>
-      <button class="btn" data-act="musterConfirm" ${why ? "disabled" : ""}>Take the field</button>
+      <button class="btn btn-go" data-act="musterConfirm" ${why ? "disabled" : ""}>Take the field</button>
     </div>
   </div>`;
 }
@@ -3375,11 +3538,15 @@ function renderMenu() {
       <dt>Opponent</dt><dd>${pick("opponent", "ai", "Versus AI")}${pick("opponent", "hotseat", "Hot-seat", "two players, one screen")}</dd>
       ${m.opponent === "ai" ? `<dt>Difficulty</dt><dd>${skills}</dd>` : ""}
     </dl>
-    <p class="prov-head">House rules &mdash; all off by default, so the defaults are the printed game.</p>
-    <ul class="house">${house}</ul>
+    <details class="disclose"${UI.menuAdvanced ? " open" : ""}>
+      <summary>House rules <span class="dim">&mdash; all off, so the defaults are the printed game</span></summary>
+      <p class="prov-head">Three places the 1997 rules are silent. Our reading is the default;
+        each toggle takes the other one.</p>
+      <ul class="house">${house}</ul>
+    </details>
     <div class="muster-actions">
       <button class="btn" data-act="menuClose">Cancel</button>
-      <button class="btn" data-act="menuBegin">Begin</button>
+      <button class="btn btn-go" data-act="menuBegin">Begin</button>
     </div>
   </div>`;
 }
@@ -3436,8 +3603,8 @@ function renderHelp() {
        own King or a Mercenary <i>kills the retreating unit</i>. Watch for chain reactions.</p>
     <p><b>Winning.</b> Kill the enemy King, or leave it standing alone on the field.</p>
     <p><b>Your battle plan.</b> A customised army is placed by you, in secret, before a shot is
-       fired: your King holds the centre of the back row, and every other base is yours to put
-       anywhere on that rank or the one in front, facing wherever you like. Pick a base, then a
+       fired: every base, the King included, goes anywhere on your back rank or the one in
+       front, facing wherever you like. Pick a base, then a
        square to move it, or another base to swap them. Bunch in the middle, or send the riders
        wide to turn a flank &mdash; the rulebook's own words are &ldquo;You&rsquo;re in
        command!&rdquo; Leaving the muster and the line exactly as they stand gives you the
@@ -3474,40 +3641,115 @@ function renderHelp() {
 }
 
 /* ============================================================
-   TUTORIAL — shown once, then never again unless asked for.
+   THE COACH — one line at a time, each shown once.
    ============================================================ */
-const TUTORIAL = [
-  ["The field", "Nine files by eight ranks, with your army on the near two rows and theirs on the far two. Only four empty ranks separate you, so contact comes quickly."],
-  ["Two actions", "Each turn you take two actions from Move, Turn and Attack. You may spend both on one unit or split them between two, but no unit attacks twice in a turn."],
-  ["Figures are everything", "The pips under a unit are its figures. They are its strength and its dice pool at once — a four-man base rolls four dice, and worn to two men it rolls two."],
-  ["Facing", "Every base has its two front corners shaved off, so its shape points the way it faces. Foot moves one square forward; Kings and Knights ride as far as they like in a straight line until blocked."],
-  ["Attacking", "You must be next to and facing your target, though you may strike its side or rear. Archers are different: they hit anything in the nine squares ahead, over the heads of your own line."],
-  ["PANIC", "If every die comes up PANIC the unit turns and runs, shoving your own line backwards. If it is pushed off the board, into an enemy or into your own King, it dies."],
-  ["Your battle plan", "A customised army is yours to place before a shot is fired. The King holds the centre of the back row; everything else goes where you want it, facing where you want. Most of the thinking in this game happens here."],
-  ["Winning", "Kill the enemy King, or leave it standing alone on the field. Press ? at any time for the full rules."],
+/* THE COACH. The player has never seen the box, and the board teaches most
+   of itself -- but two or three things no amount of highlighting conveys.
+   One line at a time, under the board, at the moment it becomes true.
+
+   This replaces an eight-step modal that opened over a dimmed board before
+   the first click, describing rules the player could not see because the
+   thing describing them was covering them up. Each line shows once, ever. */
+const COACH = [
+  { id: "actions", text: "Two actions a turn, from Move, Turn and Attack. Spend both on one unit or split them between two.",
+    when: () => G.phase === "play" && !G.gameOver && UI.sel == null },
+  { id: "figures", text: "The pips under a base are its figures \u2014 its strength and its dice pool at once. Four men roll four dice; worn to two, it rolls two.",
+    when: () => G.phase === "play" && !G.gameOver && UI.sel != null },
+  { id: "reach", text: "You must face what you attack, though its side and rear count. Archers are the exception: they shoot over their own line.",
+    when: () => G.phase === "play" && !G.gameOver && G.round >= 2 },
+  { id: "panic", text: "Every die came up PANIC: the unit turns and runs, shoving your own line back. Off the board, into an enemy, or into your own King \u2014 it dies.",
+    when: () => !!(G.dice && G.dice.panicSteps) },
 ];
 
-function renderTutorial() {
-  const el = document.getElementById("tutorial");
-  if (!UI.tutorialOpen) { el.hidden = true; return; }
+function coachSeen() {
+  if (UI.coach) return UI.coach;
+  try { UI.coach = JSON.parse(localStorage.getItem(COACH_KEY) || "{}"); }
+  catch (e) { UI.coach = {}; }
+  return UI.coach;
+}
+
+function coachDismiss(id) {
+  const seen = coachSeen();
+  seen[id] = 1;
+  try { localStorage.setItem(COACH_KEY, JSON.stringify(seen)); } catch (e) {}
+  updateAll();
+}
+
+/* THE ENDING. Ten minutes of play used to resolve into two words in the HUD
+   corner -- "Gold wins" where it had said "Gold to act" -- with every command
+   still live and nothing offering another game. The board stays visible
+   behind this: the final position is worth looking at. */
+function renderOver() {
+  const el = document.getElementById("over");
+  if (!el) return;
+  if (!G.gameOver || UI.menuOpen || UI.helpOpen || UI.musterOpen || UI.animating) {
+    el.hidden = true; el.innerHTML = ""; return;
+  }
+  const w = G.result.winner;
+  const REASON = {
+    king: w === null ? "" : "the enemy King is down",
+    alone: w === null ? "" : "the enemy King stands alone on the field",
+    cap: "the round limit ran out",
+  };
+  /* Figures still standing, which is the game's own measure of a margin. */
+  const left = [0, 1].map(sd =>
+    G.units.filter(u => u.alive && u.side === sd).reduce((n, u) => n + u.figs, 0));
+  const rows = [0, 1].map(sd =>
+    `<dt><span class="side s${sd}">${esc(G.players[sd].name)}</span></dt>
+     <dd>${left[sd]} ${left[sd] === 1 ? "figure" : "figures"} standing</dd>`).join("");
+
   el.hidden = false;
-  const i = UI.tutorialStep;
-  const [title, body] = TUTORIAL[i];
-  el.innerHTML = `<div class="box tut-card">
-    <span class="box-label">${esc(title)}</span>
-    <p>${esc(body)}</p>
-    <p class="dim">${i + 1} of ${TUTORIAL.length}</p>
+  el.innerHTML = `<div class="box over-card" role="alertdialog" aria-labelledby="over-title">
+    <span class="box-label">Field Cleared</span>
+    <p class="over-who" id="over-title">${w === null
+      ? `<span class="dim">Stalemate</span>`
+      : `<span class="side s${w}">${esc(G.players[w].name)}</span> <span class="dim">wins</span>`}</p>
+    <p class="over-why">${esc(REASON[G.result.reason] || "")}${
+      REASON[G.result.reason] ? ` &mdash; round ${G.round}` : `round ${G.round}`}</p>
+    <dl class="over-count">${rows}</dl>
     <div class="muster-actions">
-      <button class="btn" data-act="tutSkip">Skip</button>
-      <button class="btn" data-act="tutNext" autofocus>${i === TUTORIAL.length - 1 ? "Begin" : "Next"}</button>
+      <button class="btn btn-go" data-act="again" autofocus>Play again</button>
+      <button class="btn" data-act="menuOpen">Change sides</button>
     </div>
   </div>`;
 }
 
-function tutorialDone() {
-  UI.tutorialOpen = false;
-  try { localStorage.setItem(TUTORIAL_KEY, "1"); } catch (e) {}
-  updateAll();
+/* TURNING ON TOUCH. Two 44px targets will not fit on a 28px base: on a phone
+   the pair overlapped by about two thirds of their width, so tapping the left
+   arrow turned right as often as not. On a coarse pointer the handles come
+   off the base and become a real pair of controls under the board, with the
+   unit they act on named beside them. The mouse keeps the handles, where
+   they are precise and where a corner is a 21px target you can actually
+   hit. */
+function renderTouchbar() {
+  const el = document.getElementById("touchbar");
+  if (!el) return;
+  const u = UI.sel ? byUid(G, UI.sel) : null;
+  if (!u || !canTurnNow(u)) { el.hidden = true; el.innerHTML = ""; return; }
+  const arm = dir => `<button class="turnbtn" data-act="rot${dir === "left" ? "L" : "R"}"
+    aria-label="Turn ${esc(defOf(u).name)} ${dir}">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path class="arc" d="${ROT_ARC[dir]}"/><path class="head" d="${ROT_HEAD[dir]}"/>
+    </svg></button>`;
+  el.hidden = false;
+  el.innerHTML = `${arm("left")}
+    <span class="turn-who"><span class="side s${u.side}">${esc(defOf(u).name)}</span>
+      <span class="dim">facing ${esc(FACE_NAMES[u.face])}</span></span>
+    ${arm("right")}`;
+}
+
+function renderCoach() {
+  const el = document.getElementById("coach");
+  if (!el) return;
+  const seen = coachSeen();
+  /* Nothing over an overlay, and nothing while the machine is mid-sentence. */
+  const busy = UI.curtain || UI.menuOpen || UI.helpOpen || UI.musterOpen || UI.animating;
+  const hit = busy ? null : COACH.find(c => !seen[c.id] && c.when());
+  if (!hit) { el.hidden = true; el.innerHTML = ""; return; }
+  el.hidden = false;
+  el.innerHTML = `<p>${esc(hit.text)}</p>
+    <button class="coach-x" data-act="coachGot" data-id="${hit.id}"
+      aria-label="Got it, hide this hint">Got it</button>`;
 }
 
 /* ============================================================
@@ -3515,7 +3757,7 @@ function tutorialDone() {
    #shot=<name> drives the page to a fixed, reproducible board
    so the README images can be regenerated from a seed instead
    of being caught by hand. Motion and sound are off, and the
-   tutorial is suppressed, or the overlay lands in every frame.
+   the coach is suppressed, or its line lands in every frame.
    ============================================================ */
 function botStep(side, skill) {
   const grid = buildGrid(G);
@@ -3680,10 +3922,10 @@ function runShot(name) {
   const cb = document.getElementById("combat");
   if (cb) { cb.hidden = true; cb.innerHTML = ""; }
   UI.musterOpen = false; UI.menuOpen = false; UI.helpOpen = false;
-  UI.tutorialOpen = false; UI.curtain = false; UI.curtainThen = null;
+  UI.curtain = false; UI.curtainThen = null;
   UI.sel = null; UI.cur = null; UI.rects = null; UI.aim = null; UI.preAttack = null;
   UI.eventQueue = []; UI.animating = false; UI.advancing = false;
-  try { localStorage.setItem(TUTORIAL_KEY, "1"); } catch (e) {}
+  try { localStorage.setItem(COACH_KEY, JSON.stringify({ actions: 1, figures: 1, reach: 1, panic: 1 })); } catch (e) {}
   UI.headless = false;
   fn();
   updateAll();
@@ -3712,9 +3954,11 @@ function deployRows(side) {
 function inDeployZone(side, c, r) {
   return inBoard(c, r) && deployRows(side).includes(r);
 }
-/* The King is fixed by the rules, not by us: "on the royal emblem in the
-   back row." Everything else is free. */
-function isAnchored(u) { return u.type === "king"; }
+/* The King used to be anchored on the centre of the back row, on the strength
+   of p.6's "Your King must start on the royal emblem in the back row."
+   Un-anchored by the author, who has the board in front of him. It now moves,
+   swaps and faces within the deployment zone like every other base -- see
+   the README's What's Approximated. */
 
 function deployingSide() { return G.phase === "deploy" ? G.deploySide : -1; }
 
@@ -3722,12 +3966,11 @@ function deployingSide() { return G.phase === "deploy" ? G.deploySide : -1; }
    at any moment, so there is never an illegal board to guard against. */
 function deployPlace(unit, c, r) {
   if (G.phase !== "deploy" || unit.side !== G.deploySide) return false;
-  if (isAnchored(unit)) return false;
   if (!inDeployZone(unit.side, c, r)) return false;
   const other = unitAt(G, buildGrid(G), c, r);
   if (other === unit) return false;
   if (other) {
-    if (other.side !== unit.side || isAnchored(other)) return false;
+    if (other.side !== unit.side) return false;
     const oc = other.c, or = other.r;
     other.c = unit.c; other.r = unit.r;
     unit.c = oc; unit.r = or;
@@ -3794,12 +4037,12 @@ function renderDeployBar() {
   const side = G.deploySide;
   el.innerHTML = `<span class="box-label">Battle Plan</span>
     <p class="dep-who"><span class="side s${side}">${esc(G.players[side].name)}</span>
-      &mdash; place your line on the near two ranks. The King holds the centre of the back row.</p>
+      &mdash; place your line on the near two ranks, the King among them.</p>
     <p class="dim">Pick a base, then a square to move it, or another base to swap them.
       The two curved arrows in a selected base's front corners turn it.</p>
     <div class="muster-actions">
       <button class="btn" data-act="deployAuto">Re-form the line</button>
-      <button class="btn" data-act="deployReady">Take the field</button>
+      <button class="btn btn-go" data-act="deployReady">Take the field</button>
     </div>`;
 }
 
@@ -4463,19 +4706,20 @@ const RULE_TESTS = [
     return u.c === oc && u.r === or_ && other.c === uc && other.r === ur;
   }],
 
-  ["the King is anchored, and nothing may leave the deployment zone", () => {
+  ["the King deploys like any other base, and nothing leaves the zone", () => {
     UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
     startGame(57, { setup: "custom", opponent: "ai" });
     const king = G.units.find(u => u.side === 0 && u.type === "king");
     const other = G.units.find(u => u.side === 0 && u.type !== "king");
-    const kc = king.c, kr = king.r;
-    /* "Your King must start on the royal emblem in the back row." */
-    const kingFixed = !deployPlace(king, 0, H - 1) && king.c === kc && king.r === kr;
+    /* Free to move within the zone... */
+    const kingMoves = deployPlace(king, 0, H - 1) && king.c === 0 && king.r === H - 1;
+    /* ...and free to be swapped with, which the anchor used to forbid. */
+    const kc = king.c, kr = king.r, oc = other.c, or_ = other.r;
+    const kingSwaps = deployPlace(other, kc, kr) &&
+                      other.c === kc && other.r === kr && king.c === oc && king.r === or_;
     /* "...you may place your other figures on that row and the row in front." */
     const zoneHeld = !deployPlace(other, 4, 3) && !deployPlace(other, 4, 0);
-    /* And no base may be swapped onto the King's square either. */
-    const kingUnswappable = !deployPlace(other, kc, kr);
-    return kingFixed && zoneHeld && kingUnswappable;
+    return kingMoves && kingSwaps && zoneHeld;
   }],
 
   ["facing can be set freely while deploying, and costs nothing", () => {
@@ -4576,7 +4820,7 @@ const UI = {
   curtain: false, curtainThen: null, speedFactor: 1, undo: [], help: false,
   musterOpen: false, musterSide: 0, muster: null, musterSpecs: null, pendingOpponent: "ai",
   muted: false, speed: 1, rects: null, rotLock: null, rotLockTimer: null, aim: null, preAttack: null,
-  menuOpen: false, helpOpen: false, tutorialOpen: false, tutorialStep: 0,
+  menuOpen: false, helpOpen: false, coach: null,
   bloom: false, lastSel: null, entering: false, lastActions: null, lastTurnKey: null,
   pendingSkill: 1, houseRules: null,
   menu: { opponent: "ai", skill: "1", house: {} },
@@ -4598,7 +4842,7 @@ window.__PH = {
   newGame, startGame, runSim, runMatch, playBotGame, playRandomGame, ruleTests,
   validateArmy, basicSpec, botMuster, specBases, specFigures, unitsFromSpec, MUSTER_ORDER,
   botChooseTurn, evaluate, expectedAttack, SKILL, assertInvariants, checkVictory,
-  sfx, cycleSpeed, toggleMute, SPEED_FACTOR, perBaseOf, HOUSE_RULES, TUTORIAL,
+  sfx, cycleSpeed, toggleMute, SPEED_FACTOR, perBaseOf, HOUSE_RULES, COACH,
   openMenu, toggleHelp, runShot, SHOTS,
   deployPlace, deployFace, deployAuto, deployReady, inDeployZone, deployRows,
   tryAction, activateSquare, get UI() { return UI; },
@@ -4614,10 +4858,23 @@ function boot() {
   UI.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   setupInput();
   if (shot && runShot(shot[1])) return;
-  startGame();
-  try {
-    if (localStorage.getItem(TUTORIAL_KEY) !== "1") { UI.tutorialOpen = true; updateAll(); }
-  } catch (e) {}
+
+  /* A game in progress outlives the tab. saveGame() has written one on every
+     commit since the beginning; nothing ever read it back. */
+  const saved = loadSave();
+  if (saved) {
+    try { resumeGame(saved); return; }
+    catch (e) { clearSave(); }          /* a save we cannot read is not a save */
+  }
+
+  /* Otherwise: muster, then lay a battle plan. The cold start used to deal
+     the printed opening and call advance(), so the AI took its turn before
+     the player had clicked anything -- and the placement the whole game
+     turns on was the one thing a first-time visitor never saw. */
+  newGame(Math.floor(Math.random() * 1e9), {});   /* something to render behind the muster */
+  UI.pendingOpponent = "ai";
+  UI.pendingSkill = UI.menu && UI.menu.skill != null ? +UI.menu.skill : 1;
+  openMuster(0);
   console.log(
     "%cPumaHeart — a port of Lionheart (Parker Brothers, 1997). Board is 9x8, not the 9x10 the internet claims.",
     "color:#00ff41"
