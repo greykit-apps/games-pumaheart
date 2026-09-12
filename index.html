@@ -263,6 +263,12 @@ body::after {
   opacity: 0.9;
 }
 .sq.mv::after { box-shadow: inset 0 0 0 2px var(--mv); }
+/* The square under the hand during a drag. */
+#grid.is-dragging { cursor: grabbing; }
+#grid.is-dragging .sq { cursor: grabbing; }
+.sq.drag-over::after { box-shadow: inset 0 0 0 3px var(--sel); }
+.sq.mv.drag-over::after { box-shadow: inset 0 0 0 3px var(--mv); }
+.sq.tg.drag-over::after { box-shadow: inset 0 0 0 3px var(--tg); }
 .sq.tg::after { box-shadow: inset 0 0 0 2px var(--tg); }
 
 @keyframes bloom { from { opacity: 0; transform: scale(0.72); } to { opacity: 1; transform: none; } }
@@ -570,6 +576,11 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 
 .rot {
   pointer-events: auto;
+  /* Wholly inside the base. At 0.60sq hanging off the corners they covered
+     part of FIVE neighbouring squares -- 223px of the square directly ahead,
+     which is where you click to advance, and about 200px of each side
+     neighbour. A click meant for a move landed on a turn. Nothing of them
+     now reaches past the base they belong to. */
   /* Tucked into the base's own top corners rather than floating above it.
      Bare strokes sitting clear of the unit landed on whatever occupied the
      rank behind, and an opaque box was what used to hide that. A north-facing
@@ -578,9 +589,9 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
      amber reads over comfortably. */
   /* The box is larger than the arrow: the extra is transparent padding, so
      the mark stays a small gesture while the target stays easy to hit. */
-  position: absolute; top: calc(var(--sq) * -0.10);
-  width: calc(var(--sq) * 0.60); height: calc(var(--sq) * 0.60);
-  min-width: 24px; min-height: 24px;
+  position: absolute; top: 0;
+  width: calc(var(--sq) * 0.30); height: calc(var(--sq) * 0.30);
+  min-width: 17px; min-height: 17px;
   display: flex; align-items: center; justify-content: center;
   border: 0; background: none;
   color: var(--amber); cursor: pointer; z-index: 12;
@@ -588,10 +599,10 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   filter: drop-shadow(0 0 2px var(--bg)) drop-shadow(0 0 1px var(--bg));
   animation: rotIn 200ms var(--ease-out-expo) backwards;
 }
-.rot-left  { left: calc(var(--sq) * -0.13); }
-.rot-right { right: calc(var(--sq) * -0.13); }
+.rot-left  { left: 0; }
+.rot-right { right: 0; }
 .rot-right { animation-delay: 50ms; }
-.rot svg { width: 72%; height: 72%; overflow: visible; }
+.rot svg { width: 90%; height: 90%; overflow: visible; }
 .rot .arc  { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 .rot .head { fill: currentColor; stroke: none; }
 .rot:hover, .rot:focus-visible { color: var(--white); }
@@ -605,8 +616,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   #touchbar { display: flex; }
 }
 
-/* The board needs headroom so handles on the back rank are not clipped. */
-#board-wrap { padding-top: calc(var(--sq) * 0.16); }
+/* Nothing hangs outside a square any more, so the board needs no headroom. */
 
 /* ============================================================
    COMBAT CUT-IN
@@ -2470,6 +2480,82 @@ function processEventQueue() {
   nextEvent();
 }
 
+/* DRAG TO MOVE. Picking a base up and putting it down is what a hand does
+   to a piece on a board, and it is what people tried. Click-then-click still
+   works exactly as before -- this is the same two decisions with the mouse
+   held down in between, and it ends in the same activateSquare().
+
+   Fine pointers only. A drag on a touchscreen is how you scroll the page,
+   and turning rotation into a press-and-hold was ruled out for the same
+   reason: the hold would fire in the middle of someone trying to drag.
+
+   A drag that ends where it started is just a click, and falls through to
+   the click handler. One that ends anywhere else suppresses that click, so
+   a base dropped on a square is not also "clicked" onto it twice. */
+const DRAG_SLOP = 6;
+
+function squareFromPoint(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const sq = el && el.closest ? el.closest("#grid .sq") : null;
+  return sq ? { c: +sq.dataset.c, r: +sq.dataset.r, el: sq } : null;
+}
+
+function setupDrag() {
+  const grid = document.getElementById("grid");
+  if (!grid || !window.matchMedia("(pointer: fine)").matches) return;
+
+  grid.addEventListener("pointerdown", ev => {
+    if (ev.button !== 0 || ev.target.closest("[data-act]")) return;   /* the turn arrows keep their click */
+    const from = squareFromPoint(ev.clientX, ev.clientY);
+    if (!from) return;
+    const u = unitAt(G, buildGrid(G), from.c, from.r);
+    const mine = G.phase === "deploy" ? (u && u.side === G.deploySide && deployTurn())
+                                      : (u && u.side === G.turn && myTurn());
+    if (!mine) return;
+    UI.drag = { uid: u.uid, from, x: ev.clientX, y: ev.clientY, live: false };
+  });
+
+  grid.addEventListener("pointermove", ev => {
+    const d = UI.drag;
+    if (!d) return;
+    if (!d.live) {
+      if (Math.abs(ev.clientX - d.x) + Math.abs(ev.clientY - d.y) < DRAG_SLOP) return;
+      d.live = true;
+      /* Selecting on the way makes the legal squares light up under the
+         hand, so the drag is guided rather than guessed. */
+      if (UI.sel !== d.uid) { UI.sel = d.uid; updateAll(); }
+      grid.classList.add("is-dragging");
+    }
+    const over = squareFromPoint(ev.clientX, ev.clientY);
+    const key = over ? over.c + "," + over.r : null;
+    if (key !== d.overKey) {
+      d.overKey = key;
+      for (const el of grid.querySelectorAll(".sq.drag-over")) el.classList.remove("drag-over");
+      if (over) over.el.classList.add("drag-over");
+    }
+  });
+
+  const finish = ev => {
+    const d = UI.drag;
+    UI.drag = null;
+    if (!d) return;
+    grid.classList.remove("is-dragging");
+    for (const el of grid.querySelectorAll(".sq.drag-over")) el.classList.remove("drag-over");
+    if (!d.live) return;                       /* never moved: let it be a click */
+    /* A timestamp, not a flag. A drop that lands on a different element than
+       the press sometimes produces no click at all, and a flag left standing
+       would then eat the next real one. This expires on its own. */
+    UI.draggedAt = Date.now();
+    const to = ev ? squareFromPoint(ev.clientX, ev.clientY) : null;
+    if (!to || (to.c === d.from.c && to.r === d.from.r)) return;
+    UI.cur = idx(to.c, to.r);
+    UI.focusInGrid = true;
+    activateSquare(to.c, to.r);
+  };
+  grid.addEventListener("pointerup", finish);
+  grid.addEventListener("pointercancel", () => finish(null));
+}
+
 /* ============================================================
    HUMAN INPUT
    One click listener and one keydown listener on #app, routed by
@@ -2764,6 +2850,9 @@ function setupInput() {
      curtain are siblings of #app, so an #app-scoped listener cannot see
      their buttons at all -- they look inert by both mouse and keyboard. */
   document.addEventListener("click", ev => {
+    /* The click the browser fires at the end of a drag would replay the drop
+       as a second decision. */
+    if (UI.draggedAt && Date.now() - UI.draggedAt < 300) { UI.draggedAt = 0; return; }
     const act = ev.target.closest("[data-act]");
     if (act) { dispatchAct(act.dataset.act, act); return; }
     const cell = ev.target.closest(".sq");
@@ -2774,6 +2863,7 @@ function setupInput() {
     }
   });
 
+  setupDrag();
   app.addEventListener("focusin", ev => { UI.focusInGrid = !!ev.target.closest("#grid"); });
   void app;
 
@@ -3928,9 +4018,11 @@ function renderHelp() {
 
     <h3>Playing with the mouse</h3>
     <p>Click one of your bases to select it. Its legal moves ring in green and anything it can
-       attack rings in red &mdash; click a ring to act. The two curved arrows in a selected base's
-       front corners turn it a quarter turn each way, and turning costs an action like the rest.
-       Everything below is a shortcut for something you can click.</p>
+       attack rings in red &mdash; click a ring to act. Or just <b>drag the base</b> where you
+       want it and let go, which is the same two decisions with the button held down. The small
+       curved arrows in a selected base's front corners turn it a quarter turn each way, and
+       turning costs an action like the rest. Everything below is a shortcut for something you
+       can click.</p>
 
     <h3>Keys</h3>
     <table class="ref keys">${keys}</table>
@@ -4358,8 +4450,9 @@ function renderDeployBar() {
       <span class="dim">Their plan is behind the screen until both are laid.</span></p>
     ${opening ? `<p class="dep-opening"><span class="box-label-ish">${esc(opening.name)}</span>
       <span class="dim">${esc(opening.note)}</span></p>` : ""}
-    <p class="dim">Pick a base, then a square to move it, or another base to swap them.
-      The two curved arrows in a selected base's front corners turn it.</p>
+    <p class="dim">Drag a base where you want it, or click it and then the square &mdash;
+      dropping it on one of your own swaps the two. The small arrows in a selected base's
+      front corners turn it.</p>
     <div class="muster-actions">
       <button class="btn" data-act="deployAuto">Re-form the line</button>
       <button class="btn btn-go" data-act="deployReady">Take the field</button>
@@ -5290,7 +5383,7 @@ const UI = {
   musterOpen: false, musterSide: 0, muster: null, musterSpecs: null, pendingOpponent: "ai",
   muted: false, speed: 1, rects: null, rotLock: null, rotLockTimer: null, aim: null, preAttack: null,
   menuOpen: false, menuAdvanced: false, helpOpen: false, coach: null,
-  pendingFortune: null, openingIdx: null,
+  pendingFortune: null, openingIdx: null, drag: null, draggedAt: 0,
   bloom: false, lastSel: null, entering: false, lastActions: null, lastTurnKey: null,
   pendingSkill: 1, houseRules: null,
   menu: { opponent: "ai", skill: "1", fortune: String(FORTUNE_EVEN), house: {} },
