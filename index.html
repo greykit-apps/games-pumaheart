@@ -2613,6 +2613,15 @@ const ACTS = {
   menuBegin: menuBegin,
   menuPick: el => { UI.menu[el.dataset.group] = el.dataset.value; updateAll(); },
   menuHouse: el => { UI.menu.house[el.dataset.key] = !UI.menu.house[el.dataset.key]; updateAll(); },
+  /* renderMenu replaces the card wholesale, so a <details> left to its own
+     devices snapped shut on every toggle -- you could set one house rule and
+     then had to reopen the section to set the next. The open state lives in
+     UI and is re-applied on render; only this closes it. */
+  menuAdvanced: el => {
+    const d = el.closest("details");
+    UI.menuAdvanced = d ? !d.open : !UI.menuAdvanced;   /* pre-default-action */
+    updateAll();
+  },
   helpClose: () => { UI.helpOpen = false; updateAll(); },
   coachGot: el => coachDismiss(el.dataset.id),
   /* Same opponent, same difficulty, same house rules -- a rematch, not a
@@ -3553,7 +3562,8 @@ function renderMenu() {
       ${m.opponent === "ai" ? `<dt>Difficulty</dt><dd>${skills}</dd>` : ""}
     </dl>
     <details class="disclose"${UI.menuAdvanced ? " open" : ""}>
-      <summary>House rules <span class="dim">&mdash; all off, so this is the printed game</span></summary>
+      <summary data-act="menuAdvanced">House rules
+        <span class="dim">&mdash; all off, so this is the printed game</span></summary>
       <p class="prov-head">Off is Larry Harris's game as written. Each switch is an override:
         three of ours, and one the rulebook offers itself.</p>
       <ul class="house">${house}</ul>
@@ -4874,7 +4884,7 @@ const UI = {
   curtain: false, curtainThen: null, speedFactor: 1, undo: [], help: false,
   musterOpen: false, musterSide: 0, muster: null, musterSpecs: null, pendingOpponent: "ai",
   muted: false, speed: 1, rects: null, rotLock: null, rotLockTimer: null, aim: null, preAttack: null,
-  menuOpen: false, helpOpen: false, coach: null,
+  menuOpen: false, menuAdvanced: false, helpOpen: false, coach: null,
   bloom: false, lastSel: null, entering: false, lastActions: null, lastTurnKey: null,
   pendingSkill: 1, houseRules: null,
   menu: { opponent: "ai", skill: "1", house: {} },
