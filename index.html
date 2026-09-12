@@ -248,6 +248,14 @@ body::after {
    read as a crosshair. */
 .sq::before, .sq::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
 .sq.zone::before { background: var(--zone); }
+/* Behind the screen: the square is occupied and you are not to know by what.
+   Ruled rather than blank, so the far ranks read as a line you cannot see
+   through rather than as empty board. */
+.sq.screened::before {
+  background: repeating-linear-gradient(
+    135deg, var(--border) 0 1px, transparent 1px 7px);
+  opacity: 0.9;
+}
 .sq.mv::after { box-shadow: inset 0 0 0 2px var(--mv); }
 .sq.tg::after { box-shadow: inset 0 0 0 2px var(--tg); }
 
@@ -2027,7 +2035,19 @@ function renderBoard() {
   const aimDef = UI.aim ? byUid(G, UI.aim.def) : null;
   const lead = sel && sel.alive ? sel : (aimAtk && aimAtk.alive ? aimAtk : null);
   const moves = new Set(), targets = new Set(), zone = new Set();
-  if (lead) {
+  /* THE SCREEN. p.6: "Place the empty game box upright between you and your
+     opponent to form a screen. Now, IN SECRET, set up your warriors." Both
+     armies are on the board from the first frame of startGame, so laying a
+     plan against the AI meant laying it against a line you could see -- and
+     could answer. Hot-seat had the curtain; the AI game had nothing.
+
+     Two leaks, not one. The bases were drawn, and selecting a rider drew its
+     charge lane, which runs until it is blocked and so maps the enemy front
+     rank square by square even with the bases hidden. The lane was wrong as
+     UI anyway: while deploying you place a base in your own two ranks, you
+     do not ride it anywhere. */
+  const screened = G.phase === "deploy";
+  if (lead && !screened) {
     if (lead === sel) for (const m of moveSquares(G, grid, lead)) moves.add(idx(m.c, m.r));
     for (const t of attackTargets(G, grid, lead)) targets.add(idx(t.c, t.r));
     if (lead.type === "archer" || defOf(lead).allAdjacent) {
@@ -2052,7 +2072,15 @@ function renderBoard() {
         cls.push("aim-atk", "aim-s" + aimAtk.side);
       }
       if (aimDef && aimDef.alive && aimDef.c === c && aimDef.r === r) cls.push("aim-def");
-      const label = u ? esc(unitAria(u)) : `${squareName(c, r)}, empty`;
+      /* The screen covers the whole of their zone, not the squares that
+         happen to be occupied: hatching only the filled ones would let you
+         count ten bases and read the shape off the gaps, which is most of
+         what a battle plan is. */
+      const veiled = screened && inDeployZone(1 - G.deploySide, c, r);
+      const hidden = screened && u && u.side !== G.deploySide;
+      if (veiled) cls.push("screened");
+      const label = veiled ? `${squareName(c, r)}, behind the screen`
+                  : u ? esc(unitAria(u)) : `${squareName(c, r)}, empty`;
       /* Distance from the selected unit, so the highlight blooms OUTWARD from
          it rather than appearing all at once. For a rider that draws the lane
          as far as it reaches; for an Archer the block opens out of the bow.
@@ -2060,7 +2088,7 @@ function renderBoard() {
          a unit gets explained. */
       const d = lead ? Math.max(Math.abs(c - lead.c), Math.abs(r - lead.r)) : 0;
       html += `<div class="${cls.join(" ")}" role="gridcell" data-c="${c}" data-r="${r}"
-        style="--d:${d}" tabindex="${UI.cur === k ? 0 : -1}" aria-label="${label}">${u ? renderUnit(u) : ""}</div>`;
+        style="--d:${d}" tabindex="${UI.cur === k ? 0 : -1}" aria-label="${label}">${u && !hidden ? renderUnit(u) : ""}</div>`;
     }
   }
   const g = document.getElementById("grid");
@@ -4234,7 +4262,8 @@ function renderDeployBar() {
   el.innerHTML = `<span class="box-label">Battle Plan</span>
     <p class="dep-who"><span class="side s${side}">${esc(G.players[side].name)}</span>
       &mdash; place your line on the near two ranks.
-      ${G.cfg.anchorKing ? "The King holds the royal emblem." : "The King goes where you like."}</p>
+      ${G.cfg.anchorKing ? "The King holds the royal emblem." : "The King goes where you like."}
+      <span class="dim">Their plan is behind the screen until both are laid.</span></p>
     <p class="dim">Pick a base, then a square to move it, or another base to swap them.
       The two curved arrows in a selected base's front corners turn it.</p>
     <div class="muster-actions">
@@ -5022,6 +5051,31 @@ const RULE_TESTS = [
            near(humanUnderLucky.axe, 0.5) && near(humanUnderLucky.panic, 1 / 6) &&
            lucky.axe > 0.62 && lucky.panic < 0.09 &&
            unlucky.axe < 0.38 && unlucky.panic > 0.30;
+  }],
+
+  ["the screen covers every enemy base while a plan is being laid", () => {
+    /* The board hides the far zone during deployment, not the far units, so
+       the screen is only airtight while every enemy base is inside its own
+       deployment rows. A unit starting outside them would be drawn in the
+       open for the player still laying his plan. */
+    for (const opp of ["ai", "hotseat"]) {
+      UI.pendingOpponent = opp; UI.houseRules = defaultHouseRules();
+      startGame(63, Object.assign(houseRulesToCfg(UI.houseRules),
+        { setup: "custom", opponent: opp }));
+      if (G.phase !== "deploy") return false;
+      for (const side of [0, 1]) {
+        for (const u of G.units.filter(x => x.side === side && x.alive)) {
+          if (!inDeployZone(side, u.c, u.r)) return false;
+        }
+      }
+      /* And the screen is a whole zone: two ranks, every file. */
+      let veiled = 0;
+      for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+        if (inDeployZone(1 - G.deploySide, c, r)) veiled++;
+      }
+      if (veiled !== W * 2) return false;
+    }
+    return true;
   }],
 
   ["taking the field ends deployment and starts play", () => {

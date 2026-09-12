@@ -67,8 +67,9 @@ Win by killing the enemy King, or by leaving it standing alone on the field.
   back row and everything else goes anywhere on your two ranks, facing wherever you choose. Bunch in the middle or send
   the riders wide to turn a flank. Leave the muster and the line exactly as they stand and you
   get the printed Basic Game, square for square — which is why there is no separate "basic"
-  mode to choose. In hot-seat both plans are laid in secret, behind the curtain that stands in
-  for the rulebook's upright game box.
+  mode to choose. **Both plans are laid in secret**, against the AI as well as in hot-seat: the
+  far two ranks are screened while you work, standing in for the rulebook's upright game box,
+  and both lines are revealed when you take the field.
 - **All seven warriors**, including the Extra Forces: Heavy Infantry that strikes any adjacent
   square without facing it, Peasants that panic once per PANIC die rolled, and Mercenaries that
   panic their victims, never panic themselves, and **change sides** when an enemy King bribes
