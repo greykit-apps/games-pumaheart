@@ -110,23 +110,26 @@ No unit ever rolls more than four dice, because the box contains exactly four.
 ## What's Approximated
 
 Short, for once, because we have the rulebook. Everything above is printed rule, and the
-defaults ship as printed. The 1997 rules are genuinely silent on four points, where the game
-has to decide something; the readings below are ours, and three of them are switchable in the
-New Game menu:
+defaults ship as printed. The 1997 rules are genuinely silent on four points, where the game has
+to decide something and the readings below are ours. Two further entries are not gaps at all —
+they are printed rules we offer a house rule against, and they are marked as such:
 
 1. **Which basic bases you drop when customising.** The rules fix ten bases and cap each
    special, but never itemise the trade. We let the figure pool do that work.
-2. **Whether a base may be under-filled.** The table prints fixed counts for basic units, and
-   that is what ships. The Massive Infantry rule calls four *"the standard limit"*, which reads
-   as a maximum — **Bases may be under-filled** is the house rule that takes it that way.
+2. **Whether a base may be under-filled.** *Not a gap.* The rules are clear and we checked
+   three places. The p.8 table writes *"1 or 2"* for Heavy Infantry and *"up to 4"* for Peasants
+   and a bare number for everyone else; the p.6 setup prose repeats the distinction word for
+   word — *"Put 1 or 2 on a base"*, *"Put up to 4 on a base"*, *"Put 2 on a base"* for
+   Mercenaries; and the Massive Infantry rule's *"They roll fewer if the number of men on the
+   base falls below 4"* shows the only under-filled base the rulebook contemplates is one that
+   has taken casualties. A full base is what you field. **Bases may be under-filled** is a
+   house rule against a printed rule, exactly like the King.
 3. **How a turn-order tie is broken.** Most battle-axes goes first; equal counts are not
    addressed. We re-roll.
 4. **Whether a rider may move zero squares.** Not addressed. We require at least one, so a
    "move" cannot be used as a free pass.
-5. **Where the King starts.** Not a gap at all: p.6 says *“Your King must start on the royal
-   emblem in the back row”*, and it does. Listed here only because **The King deploys freely**
-   is the one house rule that overrides a rule the rulebook states outright, rather than filling
-   a silence.
+5. **Where the King starts.** *Not a gap.* p.6 says *“Your King must start on the royal emblem
+   in the back row”*, and it does. **The King deploys freely** is the house rule against it.
 6. **Whether a lone Peasant gets the two-hit re-roll.** Printed for Infantry and Archers and
    never mentioned for Peasants, so as shipped they do not get it. **Lone Peasants get the
    re-roll** is the house rule that extends it, on the grounds that one die can otherwise never
