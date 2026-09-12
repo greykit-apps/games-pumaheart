@@ -1002,7 +1002,7 @@ function newGame(seed, opts) {
     /* roundCap is NOT a printed rule. It exists only so headless sims
        terminate, and is off (0) in human play. */
     cfg: { setup: (opts && opts.setup) || "basic", opponent: "ai",
-           massiveInfantry: false, partialBases: true, roundCap: 0 },
+           massiveInfantry: false, partialBases: true, anchorKing: false, roundCap: 0 },
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* p.2: "There are two armies -- one gold, one silver." Gold is gold here.
        Silver is not: the CRT palette renders side 0 in phosphor green, and a
@@ -2470,7 +2470,7 @@ function deployActivate(c, r) {
   const u = unitAt(G, buildGrid(G), c, r);
   const sel = UI.sel ? byUid(G, UI.sel) : null;
 
-  if (sel && sel.side === side) {
+  if (sel && sel.side === side && !isAnchored(sel)) {
     if (deployPlace(sel, c, r)) { UI.cur = idx(sel.c, sel.r); updateAll(); return; }
   }
   if (u && u.side === side) {
@@ -3482,6 +3482,9 @@ const HOUSE_RULES = [
   { key: "strictBases", name: "Bases must be filled",
     source: "Our reading of a gap in the rules",
     note: "The rulebook prints fixed counts for basic units but calls 4 “the standard limit”, so we allow under-filled bases. Turn this on for the strict reading." },
+  { key: "anchorKing", name: "King starts on the royal emblem",
+    source: "Printed rule, rulebook p.6",
+    note: "“Your King must start on the royal emblem in the back row.” We leave the King free to deploy anywhere on your two ranks like every other base. Turn this on to hold it to the centre of the back row, where nothing may swap with it either." },
   { key: "noPeasantDuel", name: "No re-roll for a lone Peasant",
     source: "Our reading of a gap in the rules",
     note: "The re-roll that lets a single figure hurt armour is printed for Infantry and Archers only. We extend it to Peasants, since one die can otherwise never score the two hits armour needs. Turn this on for the literal reading." },
@@ -3489,11 +3492,12 @@ const HOUSE_RULES = [
 
 function defaultHouseRules() {
   return { massiveInfantry: false, strictBases: false, useRoundCap: false,
-           noPeasantDuel: false, partialBases: true };
+           noPeasantDuel: false, anchorKing: false, partialBases: true };
 }
 function houseRulesToCfg(hr) {
   return { massiveInfantry: !!hr.massiveInfantry, partialBases: !hr.strictBases,
-           noPeasantDuel: !!hr.noPeasantDuel, roundCap: hr.useRoundCap ? 60 : 0 };
+           noPeasantDuel: !!hr.noPeasantDuel, anchorKing: !!hr.anchorKing,
+           roundCap: hr.useRoundCap ? 60 : 0 };
 }
 
 /* ============================================================
@@ -3539,9 +3543,10 @@ function renderMenu() {
       ${m.opponent === "ai" ? `<dt>Difficulty</dt><dd>${skills}</dd>` : ""}
     </dl>
     <details class="disclose"${UI.menuAdvanced ? " open" : ""}>
-      <summary>House rules <span class="dim">&mdash; all off, so the defaults are the printed game</span></summary>
-      <p class="prov-head">Three places the 1997 rules are silent. Our reading is the default;
-        each toggle takes the other one.</p>
+      <summary>House rules <span class="dim">&mdash; all off by default</span></summary>
+      <p class="prov-head">Three places the 1997 rules are silent, where our reading is the
+        default; one printed rule we play without; and the rulebook's own optional rule.
+        Each says where it comes from.</p>
       <ul class="house">${house}</ul>
     </details>
     <div class="muster-actions">
@@ -3954,11 +3959,12 @@ function deployRows(side) {
 function inDeployZone(side, c, r) {
   return inBoard(c, r) && deployRows(side).includes(r);
 }
-/* The King used to be anchored on the centre of the back row, on the strength
-   of p.6's "Your King must start on the royal emblem in the back row."
-   Un-anchored by the author, who has the board in front of him. It now moves,
-   swaps and faces within the deployment zone like every other base -- see
-   the README's What's Approximated. */
+/* p.6: "Your King must start on the royal emblem in the back row." Printed,
+   and unambiguous -- but the author has the board in front of him and plays
+   it free, so the King deploys like any other base by default and the printed
+   placement is a house rule. Off means free; on holds it to the square it
+   started on, which nothing may swap with either. */
+function isAnchored(u) { return u.type === "king" && !!(G.cfg && G.cfg.anchorKing); }
 
 function deployingSide() { return G.phase === "deploy" ? G.deploySide : -1; }
 
@@ -3966,11 +3972,12 @@ function deployingSide() { return G.phase === "deploy" ? G.deploySide : -1; }
    at any moment, so there is never an illegal board to guard against. */
 function deployPlace(unit, c, r) {
   if (G.phase !== "deploy" || unit.side !== G.deploySide) return false;
+  if (isAnchored(unit)) return false;
   if (!inDeployZone(unit.side, c, r)) return false;
   const other = unitAt(G, buildGrid(G), c, r);
   if (other === unit) return false;
   if (other) {
-    if (other.side !== unit.side) return false;
+    if (other.side !== unit.side || isAnchored(other)) return false;
     const oc = other.c, or = other.r;
     other.c = unit.c; other.r = unit.r;
     unit.c = oc; unit.r = or;
@@ -4706,20 +4713,35 @@ const RULE_TESTS = [
     return u.c === oc && u.r === or_ && other.c === uc && other.r === ur;
   }],
 
-  ["the King deploys like any other base, and nothing leaves the zone", () => {
+  ["the King deploys freely by default, and nothing leaves the zone", () => {
     UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
     startGame(57, { setup: "custom", opponent: "ai" });
     const king = G.units.find(u => u.side === 0 && u.type === "king");
     const other = G.units.find(u => u.side === 0 && u.type !== "king");
-    /* Free to move within the zone... */
     const kingMoves = deployPlace(king, 0, H - 1) && king.c === 0 && king.r === H - 1;
-    /* ...and free to be swapped with, which the anchor used to forbid. */
+    /* ...and may be swapped with, which the printed placement forbids. */
     const kc = king.c, kr = king.r, oc = other.c, or_ = other.r;
     const kingSwaps = deployPlace(other, kc, kr) &&
                       other.c === kc && other.r === kr && king.c === oc && king.r === or_;
     /* "...you may place your other figures on that row and the row in front." */
     const zoneHeld = !deployPlace(other, 4, 3) && !deployPlace(other, 4, 0);
     return kingMoves && kingSwaps && zoneHeld;
+  }],
+
+  ["the royal-emblem house rule pins the King and blocks the swap", () => {
+    UI.pendingOpponent = "ai";
+    UI.houseRules = Object.assign(defaultHouseRules(), { anchorKing: true });
+    startGame(57, Object.assign(houseRulesToCfg(UI.houseRules),
+      { setup: "custom", opponent: "ai" }));
+    const king = G.units.find(u => u.side === 0 && u.type === "king");
+    const other = G.units.find(u => u.side === 0 && u.type !== "king");
+    const kc = king.c, kr = king.r;
+    /* "Your King must start on the royal emblem in the back row." */
+    const pinned = !deployPlace(king, 0, H - 1) && king.c === kc && king.r === kr;
+    const unswappable = !deployPlace(other, kc, kr);
+    /* The printed opening puts it on the centre of the back row. */
+    const onEmblem = kc === 4 && kr === H - 1;
+    return pinned && unswappable && onEmblem;
   }],
 
   ["facing can be set freely while deploying, and costs nothing", () => {

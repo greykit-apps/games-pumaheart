@@ -80,8 +80,9 @@ Win by killing the enemy King, or by leaving it standing alone on the field.
 - **Mouse-first**, with full keyboard play alongside it, a screen-reader commentary separate
   from the field report, and a reduced-motion path that skips animation entirely rather than
   merely disabling transitions.
-- **House rules**, all off by default so the shipped defaults are the printed game — including
-  the rulebook's own optional Massive Infantry rule.
+- **House rules**, all off by default: three gaps in the 1997 rules where our reading is the
+  default, the rulebook's own optional Massive Infantry rule, and the printed royal-emblem
+  placement, which we play without. Each says in the menu where it comes from.
 
 ## The Warriors
 
@@ -102,8 +103,8 @@ No unit ever rolls more than four dice, because the box contains exactly four.
 ## What's Approximated
 
 Short, for once, because we have the rulebook. Everything above is printed rule. The 1997 rules
-are genuinely silent on four points, these readings are ours, and one thing below is a
-deliberate departure from a rule that is perfectly clear:
+are genuinely silent on four points and these readings are ours. One further entry is not a gap
+at all — it is a printed rule we play without, and it is a house rule you can switch back on:
 
 1. **Which basic bases you drop when customising.** The rules fix ten bases and cap each
    special, but never itemise the trade. We let the figure pool do that work.
@@ -115,9 +116,10 @@ deliberate departure from a rule that is perfectly clear:
 4. **Whether a rider may move zero squares.** Not addressed. We require at least one, so a
    "move" cannot be used as a free pass.
 5. **Where the King starts.** The rulebook is not silent here — p.6 says *“Your King must
-   start on the royal emblem in the back row”* — and we deliberately ignore it: the King
-   deploys anywhere on your two ranks like every other base. This one is a departure, not a
-   reading of a gap, and it is listed here so nobody mistakes it for fidelity.
+   start on the royal emblem in the back row.”* By default we play without it: the King deploys
+   anywhere on your two ranks like every other base. Because the rule is printed rather than
+   absent, it is a house rule rather than a reading — **King starts on the royal emblem** in the
+   New Game menu puts it back, and pins the square against swaps too.
 6. **Whether a lone Peasant gets the two-hit re-roll.** It is printed for Infantry and extended
    to Archers, but Peasants are never mentioned though they also roll one die a figure. We
    extend it, since one die could otherwise never produce the two hits armour needs. The literal
