@@ -81,16 +81,18 @@ Win by killing the enemy King, or by leaving it standing alone on the field.
   either way, a vanguard, everything forward, wide wings, held back. The AI draws from it by
   skill: a Squire lands on a weak shape about a quarter of the time, a Marshal under 1 in 300.
   **Re-form the line** in the deploy screen steps you through the same eight.
-- **Fortune**, a second difficulty dial beside the first. It tilts the opponent's dice toward
-  hitting or toward PANIC; yours stay the printed die at every setting. At equal skill over 300
-  games a side the AI wins 20% Unlucky, 49% Even, 70% Lucky.
+- **An extra die**, a house rule for either side or both: throw one die more than the unit is
+  owed and discard the worst of them — three become four, keep three. A PANIC goes first, then a
+  face that scores nothing; a scoring face is never the one dropped. Set it for one side as a
+  handicap, or for both to leave the odds level and the fights bloodier. The discarded die is
+  shown, rolled and set aside, rather than quietly vanishing.
 - **Hot-seat**, with a handover curtain standing in for the rulebook's upright game box.
 - **Mouse-first**, with full keyboard play alongside it, a screen-reader commentary separate
   from the field report, and a reduced-motion path that skips animation entirely rather than
   merely disabling transitions.
 - **House rules**, all off, so what ships is the printed game. Each is an override you switch
-  on: three of ours — under-filled bases, a freely-deployed King, the re-roll extended to lone
-  Peasants — plus the rulebook's own optional Massive Infantry rule.
+  on: under-filled bases, a freely-deployed King, the re-roll extended to lone Peasants, an
+  extra die for either army — plus the rulebook's own optional Massive Infantry rule.
 
 ## The Warriors
 

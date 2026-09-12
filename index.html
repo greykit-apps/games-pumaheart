@@ -144,7 +144,6 @@ body::after {
 .disclose > summary::before { content: "+ "; color: var(--amber); }
 .disclose[open] > summary::before { content: "\2212 "; }
 .disclose > summary:hover, .disclose > summary:focus-visible { color: var(--text); }
-.fortune-note { margin: 5px 0 0; font-size: 12px; }
 /* The opening the library just laid, named where it can replace itself. */
 .dep-opening { margin: 6px 0 0; }
 .dep-opening .box-label-ish {
@@ -227,6 +226,10 @@ body::after {
 .logdie svg path { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 .logdie.f-axe.scores, .logdie.f-arrow.scores { color: var(--green); }
 .logdie.f-panic { color: var(--red); }
+/* Set aside by the extra-die house rule: rolled, and not counted. */
+.logdie.discarded, .bigdie.discarded { opacity: 0.3; }
+.logdie.discarded { margin-left: 5px; }
+.bigdie.discarded { border-style: dashed; }
 .log-sum { margin-left: 5px; white-space: nowrap; }
 .sum-bad { color: var(--red); }
 .sum-note { color: var(--text-dim); }
@@ -1028,7 +1031,7 @@ function newGame(seed, opts) {
        terminate, and is off (0) in human play. */
     cfg: { setup: (opts && opts.setup) || "basic", opponent: "ai",
            massiveInfantry: false, partialBases: false, anchorKing: true,
-           noPeasantDuel: true, fortune: FORTUNE_EVEN, roundCap: STALEMATE_CAP },
+           noPeasantDuel: true, extraDie: [false, false], roundCap: STALEMATE_CAP },
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* p.2: "There are two armies -- one gold, one silver." Gold is gold here.
        Silver is not: the CRT palette renders side 0 in phosphor green, and a
@@ -1062,8 +1065,8 @@ function newGame(seed, opts) {
      most Battle-axes will go first." Ties are not addressed by the rules;
      we re-roll (plan section 6, gap 3). */
   for (;;) {
-    const a = rollDice(4).filter(f => f === AXE).length;
-    const b = rollDice(4).filter(f => f === AXE).length;
+    const a = rollDice(4).kept.filter(f => f === AXE).length;
+    const b = rollDice(4).kept.filter(f => f === AXE).length;
     if (a !== b) { G.first = a > b ? 0 : 1; break; }
   }
   G.turn = G.first;
@@ -1173,72 +1176,56 @@ function diceFor(u) {
   return Math.min(per, MAX_DICE, u.figs * d.dicePerFig);
 }
 
-/* FORTUNE. The die is printed 3 axes, 2 arrows, 1 PANIC, and at "Even" that
-   is exactly what is thrown -- down to the same single rint(6) per die, so
-   the default path is byte-identical to the game before fortune existed.
-   The other two settings reweight the AI's own rolls. Yours stay printed at
-   every setting.
+/* THE EXTRA DIE. A house rule, off for both sides: roll one die more than
+   the unit is owed and discard the worst of them. Three dice become four,
+   keep three.
 
-   Two weights, not one, and the second was not optional. Weighting PANIC
-   alone gives a badly lopsided lever, because what PANIC really costs is the
-   TOTAL panic that breaks a unit, and that scales on the power of the dice:
-   doubling the face rate from 16.7% to 30.6% makes an all-four-PANIC roll
-   eleven times likelier, while halving it only trims a number already near
-   zero. Measured over 300 games a side at equal skill, panic weight alone
-   moved the AI 48.7% -> 34.3% down and 48.7% -> 52.0% up. So fortune also
-   weights the attacker's OWN scoring face, which is the half a player would
-   actually call luck, and the two ends come out comparable.
+   Worst is ranked, not guessed. A PANIC always goes first -- it is the only
+   face that can hurt the thrower. Then a face that scores nothing for this
+   attacker, and a scoring one is never discarded while anything else is
+   there. A Peasant has no single hit face, scoring with whichever symbol it
+   rolled the most of, so for it the losing pile is the smaller one.
 
-                panic   hit face   P(hit face)   P(PANIC)
-     Unlucky     2.2       0.7        33.3%        34.9%
-     Even        1         1          50.0%        16.7%    (the printed die)
-     Lucky       0.45      1.6        66.2%         6.2%
+   The unit's DICE POOL is untouched: diceFor() still returns what the
+   rulebook prints, so the box-has-four-dice invariant holds. This adds a
+   throw, not a die to the base.
 
-   The AI is not told. Its planner reads DICE_DIST, which stays the exact
-   distribution of the printed die, so a lucky opponent plays the same game
-   and simply comes off better. That keeps DICE_DIST a load-time constant
-   rather than a function of settings, and it is why the lever is still a
-   little stronger downwards: an unlucky AI compounds bad dice with
-   expectations calibrated for fair ones. */
-const FORTUNE = [
-  { key: "unlucky", name: "Unlucky", panicWeight: 2.2,  hitWeight: 0.7 },
-  { key: "even",    name: "Even",    panicWeight: 1,    hitWeight: 1 },
-  { key: "lucky",   name: "Lucky",   panicWeight: 0.45, hitWeight: 1.6 },
-];
-const FORTUNE_EVEN = 1;
-
-/* The dial is the opponent's, so it only bites on a bot's own rolls. */
-function fortuneFor(side) {
-  if (!G || !G.cfg || side == null) return null;
-  const f = FORTUNE[G.cfg.fortune == null ? FORTUNE_EVEN : G.cfg.fortune];
-  if (!f || f.panicWeight === 1) return null;
-  return G.players[side] && G.players[side].isBot ? f : null;
+   Neither side's planner is told. DICE_DIST stays the exact distribution of
+   the printed die, so an AI with the extra die plays the same game and comes
+   off better, and the search stays a load-time constant. */
+function dropWorstDie(faces, hitFace) {
+  const axes = faces.filter(f => f === AXE).length;
+  const arrows = faces.filter(f => f === ARROW).length;
+  const scores = f => hitFace === null ? (axes >= arrows ? f === AXE : f === ARROW)
+                                       : f === hitFace;
+  const rank = f => f === PANIC ? 0 : scores(f) ? 2 : 1;
+  let worst = 0;
+  for (let i = 1; i < faces.length; i++) {
+    if (rank(faces[i]) < rank(faces[worst])) worst = i;
+  }
+  const kept = faces.slice();
+  const gone = kept.splice(worst, 1)[0];
+  return { kept, gone };
 }
 
+function hasExtraDie(side) {
+  return !!(G && G.cfg && G.cfg.extraDie && side != null && G.cfg.extraDie[side]);
+}
+
+/* Returns the faces that count, and the one thrown away, so the cut-in and
+   the field report can show what the rule actually did. */
 function rollDice(n, side, hitFace) {
   /* Test seam. A total panic on a full base happens once in 1296
      attacks, so the cascade cannot be reached by simulation alone. */
   if (HARNESS.forceFaces) {
     const forced = HARNESS.forceFaces.splice(0, n);
-    if (forced.length === n) return forced;
+    if (forced.length === n) return { kept: forced, gone: null };
   }
-  const f = fortuneFor(side);
-  const out = [];
-  if (!f) {
-    for (let i = 0; i < n; i++) out.push(DIE_FACES[rint(6)]);
-    return out;
-  }
-  /* A Peasant scores with whichever symbol it rolled most of, so it has no
-     one face to favour: it gets the boost on both, which is the same tilt
-     spread evenly. */
-  const boost = t => hitFace == null ? f.hitWeight : (t === hitFace ? f.hitWeight : 1);
-  const wAxe = 3 * boost(AXE), wArrow = 2 * boost(ARROW), wPanic = f.panicWeight;
-  const total = wAxe + wArrow + wPanic;
-  for (let i = 0; i < n; i++) {
-    const r = rnd() * total;
-    out.push(r < wAxe ? AXE : r < wAxe + wArrow ? ARROW : PANIC);
-  }
-  return out;
+  const extra = hasExtraDie(side);
+  const rolled = [];
+  for (let i = 0, k = extra ? n + 1 : n; i < k; i++) rolled.push(DIE_FACES[rint(6)]);
+  if (!extra) return { kept: rolled, gone: null };
+  return dropWorstDie(rolled, hitFace);
 }
 
 /* p.5 last-man rule: a single Infantry or Archer attacking a target that
@@ -1263,6 +1250,9 @@ function resolveAttack(P, grid, atk, def) {
                    whether or not there are two figures to take them -- but a
                    report saying "2 lost" off a one-figure base is a lie. */
                 defFigs: def.figs,
+                /* Faces the extra-die house rule threw away, in the order
+                   they were discarded. Empty when the rule is off. */
+                dropped: [],
                 panicSteps: 0, duel: false, victimRetreat: 0, killed: false,
                 /* An ordered record of the cascade, so the presentation can
                    replay it as a chain rather than a single jump. Pure data:
@@ -1274,11 +1264,15 @@ function resolveAttack(P, grid, atk, def) {
     /* A Peasant's hitFace is null -- it scores with "whichever you rolled the
        most of" -- so the re-roll cannot test equality against a single face. */
     const isHit = f => ad.hitFace === null ? f !== PANIC : f === ad.hitFace;
-    const f1 = rollDice(1, atk.side, ad.hitFace)[0];
+    const t1 = rollDice(1, atk.side, ad.hitFace);
+    if (t1.gone !== null) res.dropped.push(t1.gone);
+    const f1 = t1.kept[0];
     res.faces.push(f1);
     if (f1 === PANIC) { res.panicSteps = 1; return res; }
     if (isHit(f1)) {
-      const f2 = rollDice(1, atk.side, ad.hitFace)[0];
+      const t2 = rollDice(1, atk.side, ad.hitFace);
+      if (t2.gone !== null) res.dropped.push(t2.gone);
+      const f2 = t2.kept[0];
       res.faces.push(f2);
       if (f2 === PANIC) { res.panicSteps = 1; return res; }
       const axes = res.faces.filter(f => f === AXE).length;
@@ -1287,7 +1281,9 @@ function resolveAttack(P, grid, atk, def) {
     }
   } else {
     const n = diceFor(atk);
-    res.faces = rollDice(n, atk.side, ad.hitFace);
+    const thrown = rollDice(n, atk.side, ad.hitFace);
+    res.faces = thrown.kept;
+    if (thrown.gone !== null) res.dropped.push(thrown.gone);
     const axes = res.faces.filter(f => f === AXE).length;
     const arrows = res.faces.filter(f => f === ARROW).length;
     const panics = res.faces.filter(f => f === PANIC).length;
@@ -2270,7 +2266,11 @@ function attackEntryHTML(e) {
     return `<span class="logdie ${DIE_CLASS[f]}${scores ? " scores" : ""}"
       role="img" aria-label="${DIE_NAME[f]}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>`;
-  }).join("");
+  }).join("")
+  + (e.dropped || []).map(f =>
+    `<span class="logdie discarded ${DIE_CLASS[f]}" role="img"
+      aria-label="${DIE_NAME[f]}, discarded">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>`).join("");
 
   /* Red is the token for harm and nothing else, so it marks the figures that
      came off -- whichever side they came off. A Peasant can lose figures for
@@ -2321,7 +2321,8 @@ function logAttack(res, say) {
   G.log.push({
     atk: res.atkUid, def: res.defUid, faces: res.faces.slice(),
     lost: figuresLost(res), killed: !!res.killed,
-    panic: !!res.panicSteps, duel: !!res.duel, say: say,
+    panic: !!res.panicSteps, duel: !!res.duel,
+    dropped: (res.dropped || []).slice(), say: say,
   });
   if (G.log.length > 200) G.log.shift();
   announce(say);
@@ -3579,7 +3580,6 @@ function musterConfirm() {
   UI.musterSpecs = null;
   clearSave();
   startGame(undefined, Object.assign(houseRulesToCfg(UI.houseRules || defaultHouseRules()),
-    fortuneToCfg(UI.pendingFortune),
     { setup: "custom", opponent: UI.pendingOpponent || "ai", specs }));
 }
 
@@ -3859,6 +3859,12 @@ const HOUSE_RULES = [
   { key: "freeKing", name: "The King deploys freely",
     source: "Our house rule",
     note: "As printed, p.6: “Your King must start on the royal emblem in the back row”, and nothing may swap onto that square. This frees it to go anywhere on your two ranks like every other base." },
+  { key: "extraGreen", name: "Green rolls an extra die",
+    source: "Our house rule",
+    note: "Green throws one die more than the unit is owed and discards the worst of them — three dice become four, keep three. A PANIC goes first, then a face that scores nothing; a scoring face is never the one thrown away." },
+  { key: "extraGold", name: "Gold rolls an extra die",
+    source: "Our house rule",
+    note: "The same for Gold. Set one for a handicap either way, or both to leave the odds level and the fights bloodier." },
   { key: "peasantDuel", name: "Lone Peasants get the re-roll",
     source: "Our house rule",
     note: "The re-roll that lets a single figure hurt armour is printed for Infantry and Archers and never mentioned for Peasants. This extends it to them, since one die can otherwise never score the two hits armour needs." },
@@ -3866,7 +3872,7 @@ const HOUSE_RULES = [
 
 function defaultHouseRules() {
   return { massiveInfantry: false, partialBases: false, freeKing: false,
-           peasantDuel: false, useRoundCap: false };
+           peasantDuel: false, extraGreen: false, extraGold: false, useRoundCap: false };
 }
 /* The engine keeps its own polarity -- noPeasantDuel and anchorKing describe
    restrictions, which is what the rules functions want to ask about. This is
@@ -3876,13 +3882,8 @@ function houseRulesToCfg(hr) {
            partialBases: !!hr.partialBases,
            noPeasantDuel: !hr.peasantDuel,
            anchorKing: !hr.freeKing,
+           extraDie: [!!hr.extraGreen, !!hr.extraGold],
            roundCap: hr.useRoundCap ? 60 : STALEMATE_CAP };
-}
-
-/* Fortune is a difficulty knob rather than a rule override, so it rides in
-   beside the skill rather than in the house-rule list. */
-function fortuneToCfg(idx) {
-  return { fortune: idx == null ? FORTUNE_EVEN : +idx };
 }
 
 /* ============================================================
@@ -3897,7 +3898,6 @@ function menuBegin() {
   UI.menuOpen = false;
   UI.pendingOpponent = m.opponent;
   UI.pendingSkill = m.skill;
-  UI.pendingFortune = m.fortune;
   UI.houseRules = Object.assign(defaultHouseRules(), m.house);
   UI.musterSpecs = null;
   openMuster(0);
@@ -3914,10 +3914,6 @@ function renderMenu() {
       ${esc(label)}${sub ? `<span class="dim"> ${esc(sub)}</span>` : ""}</span>`;
 
   const skills = SKILL.map((sk, i) => pick("skill", String(i), sk.name)).join("");
-  /* Whose dice it tilts is the whole question, so the label says so. */
-  const fortunes = FORTUNE.map((f, i) =>
-    pick("fortune", String(i), f.name, i === FORTUNE_EVEN ? "the printed die" : "")).join("")
-    + `<p class="dim fortune-note">Tilts the opponent's dice toward hitting or toward PANIC. Yours stay the printed die.</p>`;
   const house = HOUSE_RULES.map(h => `
     <li>
       <span class="opt ${m.house[h.key] ? "on" : ""}" data-act="menuHouse" data-key="${h.key}"
@@ -3931,7 +3927,6 @@ function renderMenu() {
     <dl class="menu-rows">
       <dt>Opponent</dt><dd>${pick("opponent", "ai", "Versus AI")}${pick("opponent", "hotseat", "Hot-seat", "two players, one screen")}</dd>
       ${m.opponent === "ai" ? `<dt>Difficulty</dt><dd>${skills}</dd>` : ""}
-      ${m.opponent === "ai" ? `<dt>Fortune</dt><dd>${fortunes}</dd>` : ""}
     </dl>
     <details class="disclose"${UI.menuAdvanced ? " open" : ""}>
       <summary data-act="menuAdvanced">House rules
@@ -4526,7 +4521,14 @@ function combatCardHTML(res) {
     return `<span class="bigdie ${DIE_CLASS[f]}${scores ? " scores" : ""}"
       role="img" aria-label="${DIE_NAME[f]}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>`;
-  }).join("");
+  }).join("")
+  /* A die discarded by the extra-die house rule rolls with the rest and is
+     then plainly set aside -- a rule you cannot see happen is one the player
+     has to take on trust. */
+  + (res.dropped || []).map(f =>
+    `<span class="bigdie discarded ${DIE_CLASS[f]}" role="img"
+      aria-label="${DIE_NAME[f]}, discarded">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>`).join("");
 
   return `<div class="box combat-card" role="status" aria-live="polite">
     <span class="box-label">Attack</span>
@@ -5219,25 +5221,44 @@ const RULE_TESTS = [
     return squire > 0.18 && squire < 0.32 && marshal < 0.02 && rate(1) < squire;
   }],
 
-  ["fortune leaves the printed die alone at Even, and never touches a human", () => {
+  ["the extra die is off by default, and keeps the best when it is on", () => {
     startGame(62, { setup: "basic", opponent: "ai" });
-    G.players[0].isBot = false; G.players[1].isBot = true;
-    const count = (fortune, side) => {
-      G.cfg.fortune = fortune;
-      const c = { [AXE]: 0, [ARROW]: 0, [PANIC]: 0 };
-      for (let i = 0; i < 6000; i++) for (const f of rollDice(4, side, AXE)) c[f]++;
-      const n = c[AXE] + c[ARROW] + c[PANIC];
-      return { axe: c[AXE] / n, panic: c[PANIC] / n };
+    const throws = (side, n) => {
+      let kept = 0, gone = 0;
+      for (let i = 0; i < 400; i++) {
+        const t = rollDice(n, side, AXE);
+        kept += t.kept.length;
+        if (t.gone !== null) gone++;
+      }
+      return { perThrow: kept / 400, discards: gone };
     };
-    const near = (a, b) => Math.abs(a - b) < 0.02;
-    const even = count(FORTUNE_EVEN, 1);
-    const lucky = count(2, 1), unlucky = count(0, 1);
-    const humanUnderLucky = count(2, 0);
-    G.cfg.fortune = FORTUNE_EVEN;
-    return near(even.axe, 0.5) && near(even.panic, 1 / 6) &&
-           near(humanUnderLucky.axe, 0.5) && near(humanUnderLucky.panic, 1 / 6) &&
-           lucky.axe > 0.62 && lucky.panic < 0.09 &&
-           unlucky.axe < 0.38 && unlucky.panic > 0.30;
+    /* Off: the pool is thrown and nothing is discarded. */
+    G.cfg.extraDie = [false, false];
+    const plain = throws(0, 3);
+    if (plain.perThrow !== 3 || plain.discards !== 0) return false;
+
+    /* On for Green only, and only for Green. */
+    G.cfg.extraDie = [true, false];
+    const green = throws(0, 3), gold = throws(1, 3);
+    if (green.perThrow !== 3 || green.discards !== 400) return false;
+    if (gold.perThrow !== 3 || gold.discards !== 0) return false;
+
+    /* And it discards the right one, every time. */
+    const drop = (faces, hitFace) => dropWorstDie(faces, hitFace).gone;
+    const ok =
+      drop([AXE, AXE, PANIC], AXE) === PANIC &&          /* PANIC before anything */
+      drop([AXE, ARROW, ARROW], AXE) === ARROW &&        /* then a face that scores nothing */
+      drop([AXE, AXE, AXE], AXE) === AXE &&              /* only scoring faces left */
+      drop([PANIC, PANIC, AXE], AXE) === PANIC &&
+      drop([ARROW, ARROW, AXE], null) === AXE &&         /* a Peasant drops its smaller pile */
+      drop([AXE, AXE, ARROW], null) === ARROW;
+    if (!ok) return false;
+
+    /* The pool itself is untouched, so the box still holds four dice. */
+    G.cfg.extraDie = [true, true];
+    for (const u of G.units) if (u.alive && diceFor(u) > MAX_DICE) return false;
+    G.cfg.extraDie = [false, false];
+    return true;
   }],
 
   ["the screen covers every enemy base while a plan is being laid", () => {
@@ -5264,6 +5285,7 @@ const RULE_TESTS = [
     }
     return true;
   }],
+
 
   ["a game against an opponent who never advances still ends", () => {
     /* The stall this guards was real and lasted six hundred rounds with all
@@ -5293,6 +5315,7 @@ const RULE_TESTS = [
     }
     return true;
   }],
+
 
   ["taking the field ends deployment and starts play", () => {
     UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
@@ -5383,10 +5406,10 @@ const UI = {
   musterOpen: false, musterSide: 0, muster: null, musterSpecs: null, pendingOpponent: "ai",
   muted: false, speed: 1, rects: null, rotLock: null, rotLockTimer: null, aim: null, preAttack: null,
   menuOpen: false, menuAdvanced: false, helpOpen: false, coach: null,
-  pendingFortune: null, openingIdx: null, drag: null, draggedAt: 0,
+  openingIdx: null, drag: null, draggedAt: 0,
   bloom: false, lastSel: null, entering: false, lastActions: null, lastTurnKey: null,
   pendingSkill: 1, houseRules: null,
-  menu: { opponent: "ai", skill: "1", fortune: String(FORTUNE_EVEN), house: {} },
+  menu: { opponent: "ai", skill: "1", house: {} },
 };
 
 const RAIL = [
@@ -5406,7 +5429,7 @@ window.__PH = {
   validateArmy, basicSpec, botMuster, specBases, specFigures, unitsFromSpec, MUSTER_ORDER,
   botChooseTurn, evaluate, expectedAttack, SKILL, assertInvariants, checkVictory,
   sfx, cycleSpeed, toggleMute, SPEED_FACTOR, perBaseOf, HOUSE_RULES, COACH,
-  OPENINGS, pickOpening, placeArmy, FORTUNE, fortuneFor, rollDice,
+  OPENINGS, pickOpening, placeArmy, rollDice, dropWorstDie, hasExtraDie,
   actionDelta, sideScore, applyQuiet, snapshot,
   openMenu, toggleHelp, runShot, SHOTS,
   deployPlace, deployFace, deployAuto, deployReady, inDeployZone, deployRows,
