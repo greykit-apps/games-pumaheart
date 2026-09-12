@@ -774,8 +774,14 @@ function rollDice(n) {
 /* p.5 last-man rule: a single Infantry or Archer attacking a target that
    needs two hits rolls one die, and on a hit rolls that die again. A PANIC
    either time panics the attacker. */
+/* p.5 prints this for Infantry, and extends it to Archers in the Archer note.
+   Peasants also roll one die a figure, so a lone one could otherwise never
+   score the two hits armour needs -- we read the rule as covering them too.
+   The literal reading is available as a house rule. */
 function needsLastManDuel(atk, def) {
-  return atk.figs === 1 && defOf(atk).dicePerFig === 1 && defOf(def).htk === 2;
+  if (atk.figs !== 1 || defOf(atk).dicePerFig !== 1 || defOf(def).htk !== 2) return false;
+  if (atk.type === "peasant" && G && G.cfg && G.cfg.noPeasantDuel) return false;
+  return true;
 }
 
 function resolveAttack(P, grid, atk, def) {
@@ -789,14 +795,19 @@ function resolveAttack(P, grid, atk, def) {
 
   if (needsLastManDuel(atk, def)) {
     res.duel = true;
+    /* A Peasant's hitFace is null -- it scores with "whichever you rolled the
+       most of" -- so the re-roll cannot test equality against a single face. */
+    const isHit = f => ad.hitFace === null ? f !== PANIC : f === ad.hitFace;
     const f1 = rollDice(1)[0];
     res.faces.push(f1);
     if (f1 === PANIC) { res.panicSteps = 1; return res; }
-    if (f1 === ad.hitFace) {
+    if (isHit(f1)) {
       const f2 = rollDice(1)[0];
       res.faces.push(f2);
       if (f2 === PANIC) { res.panicSteps = 1; return res; }
-      if (f2 === ad.hitFace) res.hits = 2;
+      const axes = res.faces.filter(f => f === AXE).length;
+      const arrows = res.faces.filter(f => f === ARROW).length;
+      res.hits = hitsFrom(ad, axes, arrows);
     }
   } else {
     const n = diceFor(atk);
@@ -866,6 +877,33 @@ function panicRetreat(P, u, steps, depth, trace) {
   }
 }
 
+/* p.7 King vs. Mercenary: "If your King moves into Attack position facing
+   your enemy's Mercenary unit, your King's next action (if he has one left)
+   is to bribe the Mercenary so he changes sides. You do not need to roll the
+   Combat dice... The Mercenary unit is now on your side!"
+   "Exception: A Mercenary cannot be bribed if he is adjacent to AND being
+   faced by his own King -- because the King is watching him!"
+
+   Read as replacing the King's attack rather than as an extra action: the
+   rulebook says the King's action IS to bribe, and that no dice are rolled.
+   A Mercenary under its own King's eye is attacked normally instead. */
+function kingWatches(P, grid, merc) {
+  const own = kingOf(P, merc.side);
+  if (!own) return false;
+  const ahead = stepFrom(own.c, own.r, own.face, 1);
+  return ahead.c === merc.c && ahead.r === merc.r;
+}
+
+function canBribe(P, grid, king, merc) {
+  return king.type === "king" && merc.type === "mercenary" &&
+         merc.side !== king.side && merc.alive && !kingWatches(P, grid, merc);
+}
+
+function applyBribe(P, king, merc) {
+  merc.side = king.side;                 /* the pennant changes, nothing else */
+  return merc;
+}
+
 /* p.8: win by eliminating the King, OR by leaving the rival's King
    standing ALONE on the field -- not by wiping the whole army. */
 function checkVictory(P) {
@@ -895,7 +933,9 @@ function legalActions(P, grid, side) {
     /* "An individual unit may not attack more than once per turn." */
     if (!u.attackedThisTurn && actionCost(u, "attack") <= P.actionsLeft) {
       for (const t of attackTargets(P, grid, u)) {
-        out.push({ kind: "attack", uid: u.uid, defUid: t.uid });
+        out.push(canBribe(P, grid, u, t)
+          ? { kind: "bribe", uid: u.uid, defUid: t.uid }
+          : { kind: "attack", uid: u.uid, defUid: t.uid });
       }
     }
   }
@@ -907,6 +947,12 @@ function applyAction(P, a) {
   P.actionsLeft -= actionCost(u, a.kind);
   if (a.kind === "move") { u.c = a.c; u.r = a.r; return; }
   if (a.kind === "turn") { u.face = a.face; return; }
+  if (a.kind === "bribe") {
+    u.attackedThisTurn = true;
+    applyBribe(P, u, byUid(P, a.defUid));
+    P.dice = null;                       /* no dice are rolled for a bribe */
+    return;
+  }
 
   const grid = buildGrid(P);
   const def = byUid(P, a.defUid);
@@ -1312,11 +1358,17 @@ function doAction(a) {
   const who = `${G.players[actor.side].name} ${defOf(actor).name}`;
   if (a.kind === "move") { log(`${who} advances to ${squareName(a.c, a.r)}.`); sfx("move"); }
   if (a.kind === "turn") { log(`${who} faces ${FACE_NAMES[a.face]}.`); sfx("turn"); }
+  if (a.kind === "bribe") {
+    const m = byUid(G, a.defUid);
+    log(`${who} bribes the ${G.players[m.side].name} Mercenary \u2014 it changes sides.`);
+    sfx("select");
+  }
 
   applyAction(G, a);
   const v = checkVictory(G);
   if (v) { G.result = v; G.gameOver = true; }
   if (a.kind === "attack" && !G.gameOver) { go("play", "resolve"); return NEXT; }
+  if (a.kind === "bribe" && !G.gameOver) { updateAll(); }
   if (G.gameOver) { go("gameover", "done"); return NEXT; }
   go("play", "act");
   return NEXT;
@@ -1908,10 +1960,22 @@ function expectedAttack(P, atk, def) {
   const ad = defOf(atk), dd = defOf(def);
 
   if (needsLastManDuel(atk, def)) {
-    /* One die; on a hit, roll it again. A PANIC either time panics. */
-    const pHit = ad.hitFace === AXE ? P_AXE : P_ARROW;
-    const pPanic = P_PANIC + pHit * P_PANIC;
-    const pTwo = pHit * pHit;
+    /* One die; on a hit, roll it again. Enumerated over both rolls so a
+       Peasant's "most of" scoring is handled like any other. */
+    const P_OF = { [AXE]: P_AXE, [ARROW]: P_ARROW, [PANIC]: P_PANIC };
+    const isHit = f => ad.hitFace === null ? f !== PANIC : f === ad.hitFace;
+    let pPanic = 0, pTwo = 0;
+    for (const f1 of [AXE, ARROW, PANIC]) {
+      if (f1 === PANIC) { pPanic += P_OF[f1]; continue; }
+      if (!isHit(f1)) continue;
+      for (const f2 of [AXE, ARROW, PANIC]) {
+        const p = P_OF[f1] * P_OF[f2];
+        if (f2 === PANIC) { pPanic += p; continue; }
+        const axes = (f1 === AXE ? 1 : 0) + (f2 === AXE ? 1 : 0);
+        const arrows = (f1 === ARROW ? 1 : 0) + (f2 === ARROW ? 1 : 0);
+        if (hitsFrom(ad, axes, arrows) >= 2) pTwo += p;
+      }
+    }
     return { pPanic, eRemoved: pTwo, pKill: def.figs === 1 ? pTwo : 0 };
   }
 
@@ -2017,6 +2081,11 @@ function applyQuiet(P, a) {
   P.actionsLeft -= actionCost(u, a.kind);
   if (a.kind === "move") { u.c = a.c; u.r = a.r; return; }
   if (a.kind === "turn") { u.face = a.face; return; }
+  if (a.kind === "bribe") {
+    u.attackedThisTurn = true;
+    P.units.find(x => x.uid === a.defUid).side = u.side;
+    return;
+  }
   const def = P.units.find(x => x.uid === a.defUid);
   u.attackedThisTurn = true;
   const ex = expectedAttack(P, u, def);
@@ -2565,17 +2634,21 @@ const HOUSE_RULES = [
   { key: "strictBases", name: "Bases must be filled",
     source: "Our reading of a gap in the rules",
     note: "The rulebook prints fixed counts for basic units but calls 4 “the standard limit”, so we allow under-filled bases. Turn this on for the strict reading." },
+  { key: "noPeasantDuel", name: "No re-roll for a lone Peasant",
+    source: "Our reading of a gap in the rules",
+    note: "The re-roll that lets a single figure hurt armour is printed for Infantry and Archers only. We extend it to Peasants, since one die can otherwise never score the two hits armour needs. Turn this on for the literal reading." },
   { key: "useRoundCap", name: "60-round limit",
     source: "Not a rule at all",
     note: "No such limit is printed. It exists so headless simulations terminate, and is off in human play." },
 ];
 
 function defaultHouseRules() {
-  return { massiveInfantry: false, strictBases: false, useRoundCap: false, partialBases: true };
+  return { massiveInfantry: false, strictBases: false, useRoundCap: false,
+           noPeasantDuel: false, partialBases: true };
 }
 function houseRulesToCfg(hr) {
   return { massiveInfantry: !!hr.massiveInfantry, partialBases: !hr.strictBases,
-           roundCap: hr.useRoundCap ? 60 : 0 };
+           noPeasantDuel: !!hr.noPeasantDuel, roundCap: hr.useRoundCap ? 60 : 0 };
 }
 
 /* ============================================================
@@ -2700,9 +2773,10 @@ function renderHelp() {
       <i>Lionheart</i> (1997), product 40742-I, which Hasbro still serves at
       <code>hasbro.com/common/instruct/Lionheart.PDF</code>. The board is nine files by eight ranks;
       the widely repeated “9 by 10” traces to a single hedged line in a 1998 magazine review and is
-      wrong. The rules are silent on four points &mdash; what you give up when customising, whether a
-      base may be under-filled, how a turn-order tie is broken, and whether a rider may move zero
-      squares &mdash; and those readings are ours.</p>
+      wrong. The rules are silent on five points &mdash; what you give up when customising, whether a
+      base may be under-filled, how a turn-order tie is broken, whether a rider may move zero
+      squares, and whether a lone Peasant gets the two-hit re-roll that a lone Infantryman or
+      Archer gets &mdash; and those readings are ours.</p>
     <div class="muster-actions"><button class="btn" data-act="helpClose">Close</button></div>
   </div>`;
 }
@@ -2967,6 +3041,21 @@ const RULE_TESTS = [
     return win.duel && win.removed === 1 && miss.removed === 0 && pan.panicSteps === 1 && !u[0].alive === false;
   }],
 
+  ["a lone Peasant gets the two-hit re-roll, scoring by its own most-of rule", () => {
+    const mk = () => testPosition([
+      { side: 0, type: "peasant", figs: 1, c: 4, r: 5, face: N },
+      { side: 1, type: "knight", figs: 2, c: 4, r: 4, face: S },
+    ]);
+    let u = mk(); force([AXE, AXE]);
+    const both = attackWith(u[0], u[1]);
+    u = mk(); force([AXE, ARROW]);
+    const split = attackWith(u[0], u[1]);
+    /* Two axes is two hits and removes a Knight figure. One axe and one arrow
+       is "most of" = 1, which armour shrugs off. */
+    return both.duel && both.hits === 2 && both.removed === 1 &&
+           split.duel && split.hits === 1 && split.removed === 0;
+  }],
+
   ["a Mercenary never panics; its victim about-faces and retreats once per PANIC", () => {
     const [merc, foe] = testPosition([
       { side: 0, type: "mercenary", figs: 2, c: 4, r: 5, face: N },
@@ -3097,6 +3186,137 @@ const RULE_TESTS = [
       if (new Set(mine.map(u => idx(u.c, u.r))).size !== mine.length) return false;
     }
     return true;
+  }],
+
+  ["a King facing an enemy Mercenary bribes it instead of attacking (p.7)", () => {
+    const [king, merc] = testPosition([
+      { side: 0, type: "king", figs: 1, c: 4, r: 5, face: N },
+      { side: 1, type: "mercenary", figs: 2, c: 4, r: 4, face: S },
+      { side: 1, type: "king", figs: 1, c: 0, r: 0, face: S },
+      { side: 1, type: "infantry", figs: 4, c: 8, r: 0, face: S },
+    ]);
+    G.actionsLeft = 2;
+    const acts = legalActions(G, buildGrid(G), 0).filter(a => a.uid === king.uid && a.kind !== "move" && a.kind !== "turn");
+    if (acts.length !== 1 || acts[0].kind !== "bribe") return false;
+    applyAction(G, acts[0]);
+    /* The pennant changes and nothing else: same square, facing and figures. */
+    return merc.side === 0 && merc.alive && merc.figs === 2 &&
+           merc.c === 4 && merc.r === 4 && merc.face === S &&
+           G.actionsLeft === 1 && G.dice === null;
+  }],
+
+  ["a Mercenary under its own King's eye cannot be bribed, and is attacked instead", () => {
+    const [king, merc] = testPosition([
+      { side: 0, type: "king", figs: 1, c: 4, r: 5, face: N },
+      { side: 1, type: "mercenary", figs: 2, c: 4, r: 4, face: S },
+      { side: 1, type: "king", figs: 1, c: 4, r: 3, face: S },   /* adjacent AND facing it */
+    ]);
+    G.actionsLeft = 2;
+    const acts = legalActions(G, buildGrid(G), 0).filter(a => a.uid === king.uid && a.kind === "bribe");
+    const attacks = legalActions(G, buildGrid(G), 0).filter(a => a.uid === king.uid && a.kind === "attack");
+    return acts.length === 0 && attacks.length === 1;
+  }],
+
+  ["a King merely adjacent to its Mercenary, not facing it, does not protect it", () => {
+    testPosition([
+      { side: 0, type: "king", figs: 1, c: 4, r: 5, face: N },
+      { side: 1, type: "mercenary", figs: 2, c: 4, r: 4, face: S },
+      { side: 1, type: "king", figs: 1, c: 4, r: 3, face: N },   /* adjacent, facing AWAY */
+    ]);
+    G.actionsLeft = 2;
+    return legalActions(G, buildGrid(G), 0).some(a => a.kind === "bribe");
+  }],
+
+  ["bribing the enemy's last warrior leaves their King alone and wins", () => {
+    const [king, merc] = testPosition([
+      { side: 0, type: "king", figs: 1, c: 4, r: 5, face: N },
+      { side: 1, type: "mercenary", figs: 2, c: 4, r: 4, face: S },
+      { side: 1, type: "king", figs: 1, c: 0, r: 0, face: S },
+    ]);
+    G.actionsLeft = 2;
+    const bribe = legalActions(G, buildGrid(G), 0).find(a => a.kind === "bribe");
+    applyAction(G, bribe);
+    const v = checkVictory(G);
+    return !!v && v.winner === 0 && v.reason === "alone";
+  }],
+
+  ["the printed basic deployment matches the diagram on p.3", () => {
+    newGame(4, { setup: "basic" });
+    const at = (c, r) => (G.units.find(u => u.c === c && u.r === r) || {}).type;
+    const back = H - 1, front = H - 2;
+    /* "King in the center of your back row ... a unit of Knights on either
+       side of the King ... a unit of Archers on either side of the Knights
+       ... your 5 Infantry units directly in front." */
+    const row = at(2, back) === "archer" && at(3, back) === "knight" &&
+                at(4, back) === "king" && at(5, back) === "knight" && at(6, back) === "archer";
+    const line = [2, 3, 4, 5, 6].every(c => at(c, front) === "infantry");
+    const empty = [0, 1, 7, 8].every(c => !at(c, back) && !at(c, front));
+    return row && line && empty;
+  }],
+
+  ["movement may not pass through another unit (p.4)", () => {
+    const [kn] = testPosition([
+      { side: 0, type: "knight", figs: 2, c: 4, r: 7, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 4, face: S },
+      { side: 0, type: "infantry", figs: 4, c: 4, r: 2, face: N },
+    ]);
+    const dests = moveSquares(G, buildGrid(G), kn).map(m => m.r);
+    /* Stops at r=5, one short of the blocker; nothing beyond it is reachable. */
+    return JSON.stringify(dests) === JSON.stringify([6, 5]);
+  }],
+
+  ["Mercenaries move one square at a time, not as riders do (p.7)", () => {
+    const [merc] = testPosition([{ side: 0, type: "mercenary", figs: 2, c: 4, r: 7, face: N }]);
+    return moveSquares(G, buildGrid(G), merc).length === 1 && !defOf(merc).mounted;
+  }],
+
+  ["a base leaves the board when its last figure is hit (p.5)", () => {
+    const [inf, foe] = testPosition([
+      { side: 0, type: "infantry", figs: 4, c: 4, r: 5, face: N },
+      { side: 1, type: "infantry", figs: 2, c: 4, r: 4, face: S },
+    ]);
+    force([AXE, AXE, AXE, ARROW]);            /* 3 hits against 2 figures */
+    const res = attackWith(inf, foe);
+    return res.hits === 3 && !foe.alive && foe.figs === 0 &&
+           buildGrid(G)[idx(4, 4)] === 0;      /* and the square is clear */
+  }],
+
+  ["first turn goes to whoever rolls the most battle-axes (p.4)", () => {
+    /* Both sides roll 4 dice; ties re-roll. Over many seeds neither side may
+       be favoured, and G.first must always be a valid side. */
+    let side0 = 0;
+    for (let seed = 1; seed <= 400; seed++) {
+      newGame(seed);
+      if (G.first !== 0 && G.first !== 1) return false;
+      if (G.turn !== G.first) return false;
+      if (G.first === 0) side0++;
+    }
+    return side0 > 150 && side0 < 250;        /* ~200 of 400, well inside noise */
+  }],
+
+  ["with one action left, Heavy Infantry may attack but not move or turn", () => {
+    /* The enemy sits DIAGONALLY: Heavy Infantry attacks any adjacent square,
+       so it can still strike while its forward square stays open to move to.
+       With the enemy directly ahead it would be blocked, and the test would
+       be measuring the blocker rather than the action economy. */
+    const [hv] = testPosition([
+      { side: 0, type: "heavy", figs: 2, c: 4, r: 5, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 5, r: 4, face: S },
+    ]);
+    G.actionsLeft = 2;
+    const two = legalActions(G, buildGrid(G), 0).map(a => a.kind);
+    G.actionsLeft = 1;
+    const one = legalActions(G, buildGrid(G), 0).map(a => a.kind);
+    /* Move and Turn cost 2 actions, Attack costs 1 -- so with a single action
+       left only the attack survives. The UI must not offer what it cannot do. */
+    return two.includes("move") && two.includes("turn") && two.includes("attack") &&
+           one.includes("attack") && !one.includes("move") && !one.includes("turn");
+  }],
+
+  ["an Archer's block is clipped at the board edge, never wrapped", () => {
+    const [ar] = testPosition([{ side: 0, type: "archer", figs: 4, c: 0, r: 1, face: N }]);
+    const z = attackZone(ar);
+    return z.every(sq => inBoard(sq.c, sq.r)) && z.every(sq => sq.c >= 0) && z.length < 9;
   }],
 
   ["a unit may not attack twice in the same turn, but another unit may", () => {
