@@ -141,7 +141,11 @@ body::after {
 #rail kbd {
   font: inherit; color: var(--amber); background: none; border: 0; padding: 0;
 }
-#rail .cmd { color: var(--text-dim); white-space: nowrap; }
+#rail .cmd {
+  color: var(--text-dim); white-space: nowrap; cursor: pointer;
+  padding: 2px 4px; border: 1px solid transparent;
+}
+#rail .cmd:hover { color: var(--text); border-color: var(--border); }
 
 #log-list { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
 #log-list li { padding: 2px 0; border-bottom: 1px solid var(--panel-2); color: var(--text-dim); }
@@ -206,6 +210,20 @@ body::after {
   border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 5px solid currentColor; }
 .u[data-face="3"]::after { left: -4px; top: 50%; margin-top: -4px;
   border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-right: 5px solid currentColor; }
+
+/* Hot-seat handover curtain */
+#curtain {
+  position: fixed; inset: 0; z-index: 8000; display: flex;
+  align-items: center; justify-content: center; background: rgba(10,10,10,0.92);
+}
+#curtain[hidden] { display: none !important; }
+.curtain-card { min-width: 260px; text-align: center; background: var(--bg); }
+.btn {
+  font: inherit; color: var(--amber); background: none;
+  border: 1px solid var(--border); border-top-width: 3px; border-top-style: double;
+  padding: 8px 18px; cursor: pointer;
+}
+.btn:hover { border-color: var(--amber-dim); }
 
 /* HUD & status */
 #hud-state { display: flex; align-items: center; gap: 12px; }
@@ -282,6 +300,7 @@ body::after {
     <div class="keys" id="rail-keys"></div>
   </nav>
 </div>
+<div id="curtain" hidden></div>
 <div id="announcements" class="sr-only" aria-live="polite"></div>
 
 <script>
@@ -481,8 +500,10 @@ function deployBasic(side) {
 function newGame(seed) {
   G = {
     v: 1, seed: seed, rng: seed,
+    /* roundCap is NOT a printed rule. It exists only so headless sims
+       terminate, and is off (0) in human play. */
     cfg: { setup: "basic", opponent: "ai", massiveInfantry: false,
-           partialBases: true, roundCap: 60 },
+           partialBases: true, roundCap: 0 },
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* Pride names are placeholders for the author's own wording. */
     players: [
@@ -868,6 +889,7 @@ function assertSerialisable() {
    ============================================================ */
 function playRandomGame(seed) {
   newGame(seed);
+  G.cfg.roundCap = 60;                    /* sims must terminate; human play has no cap */
   HARNESS.watermark = {};
   HARNESS.expectedUnits = G.units.length;
   if (!HARNESS.tally) HARNESS.resetTally();
@@ -878,7 +900,9 @@ function playRandomGame(seed) {
 
     const v = checkVictory(G);
     if (v) { G.result = v; G.gameOver = true; break; }
-    if (G.round > G.cfg.roundCap) { G.result = { winner: null, reason: "cap" }; G.gameOver = true; break; }
+    if (G.cfg.roundCap && G.round > G.cfg.roundCap) {
+      G.result = { winner: null, reason: "cap" }; G.gameOver = true; break;
+    }
 
     const grid = buildGrid(G);
     const acts = legalActions(G, grid, G.turn);
@@ -960,7 +984,8 @@ function runSim(n, startSeed) {
 
 window.__PH = {
   get G() { return G; },
-  newGame, runSim, playRandomGame, ruleTests, assertInvariants, checkVictory,
+  newGame, startGame, runSim, playRandomGame, ruleTests, assertInvariants, checkVictory,
+  tryAction, activateSquare, get UI() { return UI; },
   legalActions, buildGrid, UNIT_DEFS, DICE_DIST,
 };
 
@@ -1015,7 +1040,7 @@ const STEP = {
       G.actionsLeft = 2;
       const v = checkVictory(G);
       if (v) { G.result = v; G.gameOver = true; go("gameover", "done"); return NEXT; }
-      if (G.round > G.cfg.roundCap) {
+      if (G.cfg.roundCap && G.round > G.cfg.roundCap) {
         G.result = { winner: null, reason: "cap" }; G.gameOver = true;
         go("gameover", "done"); return NEXT;
       }
@@ -1049,6 +1074,10 @@ const STEP = {
     endTurn() {
       const v = checkVictory(G);
       if (v) { G.result = v; G.gameOver = true; go("gameover", "done"); return NEXT; }
+      if (G.cfg.roundCap && G.round > G.cfg.roundCap) {
+        G.result = { winner: null, reason: "cap" }; G.gameOver = true;
+        go("gameover", "done"); return NEXT;
+      }
       endTurn(G);
       G.botPlan = [];
       if (G.cfg.opponent === "hotseat" && isHuman(G.turn)) { go("play", "handoff"); return NEXT; }
@@ -1226,6 +1255,20 @@ function renderStatus() {
     ${d.note ? `<p class="note">${esc(d.note)}</p>` : ""}`;
 }
 
+/* Hot-seat handoff. Without a dismissible curtain the machine parks on a
+   WAIT that nothing resumes, and the next action skips the step that checks
+   for victory. */
+function renderCurtain() {
+  const el = document.getElementById("curtain");
+  if (!UI.curtain || G.gameOver) { el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = `<div class="box curtain-card">
+    <span class="box-label">Handover</span>
+    <p>Pass the field to <span class="side s${G.turn}">${esc(G.players[G.turn].name)}</span>.</p>
+    <button class="btn" data-act="ready" autofocus>Ready</button>
+  </div>`;
+}
+
 function renderLog() {
   document.getElementById("log-list").innerHTML =
     G.log.slice(-40).reverse().map(l => `<li>${esc(l)}</li>`).join("");
@@ -1243,6 +1286,7 @@ function updateAll() {
   renderBoard();
   renderHUD();
   renderStatus();
+  renderCurtain();
   renderLog();
   restoreFocus();
 }
@@ -1290,6 +1334,238 @@ function processEventQueue() {
     nextEvent();
   };
   nextEvent();
+}
+
+/* ============================================================
+   HUMAN INPUT
+   One click listener and one keydown listener on #app, routed by
+   data-act, plus contextual activation on the grid. Selection is
+   the only mode: clicking a legal destination moves, clicking a
+   legal target attacks, so ordinary play never needs a mode
+   switch. Everything reachable by mouse is reachable by key.
+   ============================================================ */
+
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+function pushUndo() {
+  if (!UI.undo) UI.undo = [];
+  UI.undo.push(clone(G));
+  if (UI.undo.length > 40) UI.undo.shift();
+}
+function canUndo() { return !!(UI.undo && UI.undo.length && !G.gameOver); }
+function doUndo() {
+  if (!canUndo()) return;
+  G = UI.undo.pop();
+  UI.sel = null;
+  log("Order withdrawn.");
+  updateAll();
+}
+
+function selUnit() {
+  const u = UI.sel ? byUid(G, UI.sel) : null;
+  return u && u.alive ? u : null;
+}
+function myTurn() {
+  return !G.gameOver && isHuman(G.turn) && !UI.animating && !UI.curtain;
+}
+
+function selectUnit(uid) {
+  const u = byUid(G, uid);
+  if (!u || !u.alive) return;
+  UI.sel = UI.sel === uid ? null : uid;
+  if (UI.sel) UI.cur = idx(u.c, u.r);
+  updateAll();
+}
+
+/* An attack reveals information, so it seals everything before it: you may
+   take a move back, never a dice roll. */
+function tryAction(a) {
+  if (!myTurn()) return false;
+  const grid = buildGrid(G);
+  if (!legalActions(G, grid, G.turn).some(x => sameAction(x, a))) return false;
+
+  if (a.kind === "attack") { UI.undo = []; } else { pushUndo(); }
+
+  const u = byUid(G, a.uid);
+  if (a.kind === "move") log(`${G.players[u.side].name} ${defOf(u).name} advances to ${squareName(a.c, a.r)}.`);
+  if (a.kind === "turn") log(`${G.players[u.side].name} ${defOf(u).name} faces ${FACE_NAMES[a.face]}.`);
+
+  doAction(a);
+  if (a.kind === "move" || a.kind === "turn") UI.cur = idx(byUid(G, a.uid).c, byUid(G, a.uid).r);
+  if (!byUid(G, a.uid).alive) UI.sel = null;
+  advance();
+  announceActions();
+  return true;
+}
+
+function announceActions() {
+  if (G.gameOver) return;
+  const n = G.actionsLeft;
+  log(n === 0 ? "No actions left." : n === 1 ? "One action left." : "Two actions left.");
+}
+
+/* Contextual activation: the square under the cursor decides what happens,
+   which is what keeps play to two clicks with no mode switching. */
+function activateSquare(c, r) {
+  if (!myTurn()) return;
+  const grid = buildGrid(G);
+  const u = unitAt(G, grid, c, r);
+  const sel = selUnit();
+
+  if (sel) {
+    const target = u && u.side !== sel.side
+      ? legalActions(G, grid, G.turn).find(a => a.kind === "attack" && a.uid === sel.uid && a.defUid === u.uid)
+      : null;
+    if (target) { tryAction(target); return; }
+    const move = legalActions(G, grid, G.turn)
+      .find(a => a.kind === "move" && a.uid === sel.uid && a.c === c && a.r === r);
+    if (move) { tryAction(move); return; }
+  }
+  if (u && u.side === G.turn) { selectUnit(u.uid); return; }
+  if (sel) { UI.sel = null; updateAll(); }
+}
+
+function faceSelected(face) {
+  const sel = selUnit();
+  if (!sel || sel.face === face) return;
+  tryAction({ kind: "turn", uid: sel.uid, face });
+}
+
+/* Attack ahead: fires when exactly one target is legal, otherwise parks the
+   cursor on the first so the choice is visible rather than guessed. */
+function attackAhead() {
+  const sel = selUnit();
+  if (!sel) return;
+  const grid = buildGrid(G);
+  const acts = legalActions(G, grid, G.turn).filter(a => a.kind === "attack" && a.uid === sel.uid);
+  if (!acts.length) return;
+  if (acts.length === 1) { tryAction(acts[0]); return; }
+  const t = byUid(G, acts[0].defUid);
+  UI.cur = idx(t.c, t.r);
+  updateAll();
+}
+
+function cycleUnit(dir) {
+  const grid = buildGrid(G);
+  const acts = legalActions(G, grid, G.turn);
+  const uids = [...new Set(acts.map(a => a.uid))]
+    .map(id => byUid(G, id))
+    .sort((a, b) => (a.r - b.r) || (a.c - b.c))
+    .map(u => u.uid);
+  if (!uids.length) return;
+  const at = uids.indexOf(UI.sel);
+  const next = uids[(at + (dir > 0 ? 1 : uids.length - 1) + uids.length) % uids.length];
+  UI.sel = next;
+  const u = byUid(G, next);
+  UI.cur = idx(u.c, u.r);
+  updateAll();
+}
+
+function moveCursor(dc, dr) {
+  if (UI.cur == null) UI.cur = idx(4, H - 1);
+  let c = (UI.cur % W) + dc, r = Math.floor(UI.cur / W) + dr;
+  c = Math.max(0, Math.min(W - 1, c));
+  r = Math.max(0, Math.min(H - 1, r));
+  UI.cur = idx(c, r);
+  UI.focusInGrid = true;
+  updateAll();
+}
+
+function passTurn() {
+  if (!myTurn()) return;
+  UI.undo = [];
+  UI.sel = null;
+  log(`${G.players[G.turn].name} stands fast.`);
+  go("play", "endTurn");
+  advance();
+}
+
+const ACTS = {
+  turnLeft: () => { const s = selUnit(); if (s) faceSelected((s.face + 3) % 4); },
+  turnRight: () => { const s = selUnit(); if (s) faceSelected((s.face + 1) % 4); },
+  attack: attackAhead,
+  next: () => cycleUnit(1),
+  prev: () => cycleUnit(-1),
+  undo: doUndo,
+  endTurn: passTurn,
+  help: () => toggleHelp(),
+  ready: () => { UI.curtain = false; updateAll(); advance(); },
+  newGame: () => { clearSave(); startGame(); },
+};
+
+function dispatchAct(name) {
+  const fn = ACTS[name];
+  if (fn) fn();
+}
+
+const KEYS = {
+  ArrowLeft: () => moveCursor(-1, 0), a: () => moveCursor(-1, 0),
+  ArrowRight: () => moveCursor(1, 0), d: () => moveCursor(1, 0),
+  ArrowUp: () => moveCursor(0, -1), w: () => moveCursor(0, -1),
+  ArrowDown: () => moveCursor(0, 1), s: () => moveCursor(0, 1),
+  n: () => cycleUnit(1), p: () => cycleUnit(-1),
+  1: () => faceSelected(N), 2: () => faceSelected(E), 3: () => faceSelected(S), 4: () => faceSelected(WEST),
+  q: () => dispatchAct("turnLeft"), e: () => dispatchAct("turnRight"),
+  f: attackAhead, z: doUndo, ".": passTurn,
+  Escape: () => { UI.sel = null; UI.curtain = false; updateAll(); },
+  h: () => toggleHelp(), "?": () => toggleHelp(),
+};
+
+function setupInput() {
+  const app = document.getElementById("app");
+
+  /* Delegation lives on document, not #app: overlays such as the handover
+     curtain are siblings of #app, so an #app-scoped listener cannot see
+     their buttons at all -- they look inert by both mouse and keyboard. */
+  document.addEventListener("click", ev => {
+    const act = ev.target.closest("[data-act]");
+    if (act) { dispatchAct(act.dataset.act); return; }
+    const cell = ev.target.closest(".sq");
+    if (cell) {
+      UI.cur = idx(+cell.dataset.c, +cell.dataset.r);
+      UI.focusInGrid = true;
+      activateSquare(+cell.dataset.c, +cell.dataset.r);
+    }
+  });
+
+  app.addEventListener("focusin", ev => { UI.focusInGrid = !!ev.target.closest("#grid"); });
+  void app;
+
+  document.addEventListener("keydown", ev => {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const inGrid = UI.focusInGrid || !document.activeElement || document.activeElement === document.body;
+
+    if (ev.key === "Enter" || ev.key === " ") {
+      /* Read the focused element, not ev.target: delegation is on document,
+         and a <span role="button"> gets no native Enter-to-click the way a
+         real <button> does. Without this the whole command rail is dead to
+         the keyboard. */
+      const focused = document.activeElement;
+      const act = focused && focused.closest && focused.closest("[data-act]");
+      if (act) { ev.preventDefault(); dispatchAct(act.dataset.act); return; }
+      if (inGrid && UI.cur != null) {
+        ev.preventDefault();
+        activateSquare(UI.cur % W, Math.floor(UI.cur / W));
+        return;
+      }
+    }
+    const fn = KEYS[ev.key] || KEYS[ev.key.toLowerCase()];
+    if (fn && (inGrid || !/^(Arrow|w|a|s|d)/.test(ev.key))) { ev.preventDefault(); fn(); }
+  });
+}
+
+function toggleHelp() {
+  UI.help = !UI.help;
+  updateAll();
+}
+
+function startGame(seed, opts) {
+  newGame(seed == null ? Math.floor(Math.random() * 1e9) : seed);
+  Object.assign(G.cfg, opts || {});
+  if (G.cfg.opponent === "hotseat") G.players[1].isBot = false;
+  UI.sel = null; UI.undo = []; UI.cur = idx(4, H - 1);
+  log("The prides take the field.");
+  advance();
 }
 
 /* ============================================================
@@ -1635,12 +1911,13 @@ const UI = {
   reducedMotion: false, headless: false, autoHuman: false,
   sel: null, cur: null, focusInGrid: false,
   eventQueue: [], animating: false, advancing: false, needAdvance: false,
-  curtain: false, speedFactor: 1,
+  curtain: false, speedFactor: 1, undo: [], help: false,
 };
 
 const RAIL = [
-  ["M", "Move"], ["T", "Turn"], ["A", "Attack"],
-  ["N", "Next unit"], ["Z", "Undo"], [".", "End turn"], ["?", "Help"],
+  ["Q", "Turn left", "turnLeft"], ["E", "Turn right", "turnRight"],
+  ["F", "Attack", "attack"], ["N", "Next unit", "next"],
+  ["Z", "Undo", "undo"], [".", "End turn", "endTurn"], ["?", "Help", "help"],
 ];
 
 function esc(s) {
@@ -1650,7 +1927,8 @@ function esc(s) {
 
 function renderRail() {
   document.getElementById("rail-keys").innerHTML = RAIL
-    .map(([k, label]) => `<span class="cmd">[<kbd>${esc(k)}</kbd>] ${esc(label)}</span>`)
+    .map(([k, label, act]) => `<span class="cmd" data-act="${esc(act)}" role="button"
+      tabindex="0" aria-label="${esc(label)}, key ${esc(k)}">[<kbd>${esc(k)}</kbd>] ${esc(label)}</span>`)
     .join("");
 }
 
@@ -1666,10 +1944,8 @@ function boot() {
   validateTables();
   UI.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   renderRail();
-  newGame(Math.floor(Math.random() * 1e9));   // flavour only: the seed, not a rule
-  UI.cur = idx(4, H - 1);
-  log("The prides take the field.");
-  advance();
+  setupInput();
+  startGame();
   syncRailHeight();
   addEventListener("resize", syncRailHeight, { passive: true });
   console.log(
