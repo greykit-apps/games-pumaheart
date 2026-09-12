@@ -1,6 +1,6 @@
 # PumaHeart
 
-**A faithful port of Lionheart (Parker Brothers, 1997). Gold against Silver on nine squares by eight, two actions a turn.**
+**A faithful port of Lionheart (Parker Brothers, 1997). Gold against Green on nine squares by eight, two actions a turn.**
 
 A port, not a redesign. Every rule below is transcribed from the official Parker Brothers
 rulebook for *Lionheart* — designed by Larry Harris, product `40742-I` — which Hasbro still
@@ -132,7 +132,7 @@ rider threatens from the opening position.
 ## Also plays by keyboard
 
 Everything is done with the mouse: click a base, then a square to
-move it or a ring to attack; the two curved arrows at the top of a selected base turn it. These
+move it or a ring to attack; the two curved arrows in its front corners turn it. These
 shortcuts mirror that for anyone who prefers them.
 
 

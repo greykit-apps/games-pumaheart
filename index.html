@@ -4,23 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PumaHeart — Medieval Grid Wargame</title>
-<meta name="description" content="A faithful port of Lionheart (1997). Gold against Silver on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta name="description" content="A faithful port of Lionheart (1997). Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta name="theme-color" content="#0a0a0a">
 <meta name="color-scheme" content="dark">
 <meta name="referrer" content="no-referrer">
 <meta property="og:title" content="PumaHeart">
-<meta property="og:description" content="A faithful port of Lionheart (1997). Gold against Silver on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta property="og:description" content="A faithful port of Lionheart (1997). Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://greykit.com/games/pumaheart/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="A faithful port of Lionheart (1997). Gold against Silver on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta property="og:image:alt" content="A faithful port of Lionheart (1997). Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta property="og:url" content="https://greykit.com/games/pumaheart/">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="PumaHeart">
-<meta name="twitter:description" content="A faithful port of Lionheart (1997). Gold against Silver on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta name="twitter:description" content="A faithful port of Lionheart (1997). Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta name="twitter:image" content="https://greykit.com/games/pumaheart/og.png">
-<meta name="twitter:image:alt" content="A faithful port of Lionheart (1997). Gold against Silver on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta name="twitter:image:alt" content="A faithful port of Lionheart (1997). Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
@@ -63,8 +63,8 @@
      confuses. Side is therefore also carried by glyph treatment
      (side 0 filled, side 1 outlined), by the figure pips, and by
      the aria-label. Never let colour be the only channel. */
-  --silver: var(--green);            /* side 0 */
-  --gold: var(--amber);             /* side 1 */
+  --army-green: var(--green);       /* side 0 */
+  --army-gold: var(--amber);        /* side 1 */
   --sel: var(--white);             /* selection ring            */
   --mv: var(--cyan);               /* legal move destination    */
   --tg: var(--red);                /* legal attack target       */
@@ -72,7 +72,7 @@
   --lane: rgba(0, 204, 204, 0.12);   /* a mounted charge lane   */
   --sq-light: #0d160d;
   --sq-dark: #0a0f0a;
-  --deploy-silver: rgba(0, 255, 65, 0.07);   /* side 0 deployment ranks */
+  --deploy-green: rgba(0, 255, 65, 0.07);    /* side 0 deployment ranks */
   --deploy-gold: rgba(255, 176, 0, 0.07);   /* side 1 deployment ranks */
 
   /* Floors at 32px so a 9-wide board fits a 380px viewport. */
@@ -151,8 +151,8 @@ body::after {
    BOARD & UNITS
    Side is carried by FOUR channels, never by colour alone: hue,
    a solid vs dashed base ring, the figure pips, and the
-   aria-label. --silver and --gold sit at 14.5:1 and 10.8:1 against
-   the ground but only 1.34:1 against each other -- they differ
+   aria-label. --army-green and --army-gold sit at 14.5:1 and 10.8:1
+   against the ground but only 1.34:1 against each other -- they differ
    in hue, not brightness, which is exactly the pair red-green
    colour blindness confuses.
    ============================================================ */
@@ -162,7 +162,7 @@ body::after {
   border: 1px solid var(--border); background: var(--sq-dark);
 }
 .sq.lt { background: var(--sq-light); }
-.sq.dz0 { background-image: linear-gradient(var(--deploy-silver), var(--deploy-silver)); }
+.sq.dz0 { background-image: linear-gradient(var(--deploy-green), var(--deploy-green)); }
 .sq.dz1 { background-image: linear-gradient(var(--deploy-gold), var(--deploy-gold)); }
 /* Highlights live on two pseudo layers rather than one box-shadow, so each
    can animate independently: ::before is the wash and paints UNDER the unit,
@@ -197,8 +197,8 @@ body::after {
 #grid.is-entering .u.s1 { --march: -26px; }
 
 .u { position: absolute; inset: 2px; display: flex; align-items: center; justify-content: center; }
-.u.s0 { color: var(--silver); }
-.u.s1 { color: var(--gold); }
+.u.s0 { color: var(--army-green); }
+.u.s1 { color: var(--army-gold); }
 /* The base plate. Stroke stays 2px at every board size, so the shave reads
    the same on a phone as on a desktop. */
 .u .base { position: absolute; inset: 0; width: 100%; height: 100%; transform-origin: 50% 50%; }
@@ -416,7 +416,20 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
    horizontal and packed, so above the unit is the reliably
    empty direction -- flanking it would land on its neighbours.
    ============================================================ */
+/* The frame the handles ride in. It carries the base's angle, so the two
+   arrows stay in the shaved corners instead of sliding onto the flat rear
+   edge when a unit turns away from north. It covers the whole base, so it
+   must not eat clicks meant for the square underneath. */
+.rots {
+  position: absolute; inset: 0; transform-origin: 50% 50%;
+  pointer-events: none;
+}
+/* Inert while the swing settles -- see rotLockMs(). */
+.rots.is-locked .rot { pointer-events: none; opacity: 0.45; }
+.rot { transition: opacity 120ms var(--ease-out-quart); }
+
 .rot {
+  pointer-events: auto;
   /* Tucked into the base's own top corners rather than floating above it.
      Bare strokes sitting clear of the unit landed on whatever occupied the
      rank behind, and an opaque box was what used to hide that. A north-facing
@@ -544,8 +557,8 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 
 /* HUD & status */
 #hud-state { display: flex; align-items: center; gap: 12px; }
-.side.s0 { color: var(--silver); }
-.side.s1 { color: var(--gold); }
+.side.s0 { color: var(--army-green); }
+.side.s1 { color: var(--army-gold); }
 .acts { letter-spacing: 2px; color: var(--amber); }
 .rnd { color: var(--text-dim); }
 .unit-name { margin: 0 0 8px; letter-spacing: 0.1em; text-transform: uppercase; }
@@ -845,10 +858,12 @@ function newGame(seed, opts) {
     cfg: { setup: (opts && opts.setup) || "basic", opponent: "ai",
            massiveInfantry: false, partialBases: true, roundCap: 0 },
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
-    /* p.2: "There are two armies -- one gold, one silver." The names are the
-       rulebook's own, not ours. */
+    /* p.2: "There are two armies -- one gold, one silver." Gold is gold here.
+       Silver is not: the CRT palette renders side 0 in phosphor green, and a
+       side named for a colour it is plainly not is worse than a side named
+       for what the player can see. */
     players: [
-      { id: 0, army: "silver", name: "Silver", isBot: false, skill: 1, losses: 0 },
+      { id: 0, army: "green", name: "Green", isBot: false, skill: 1, losses: 0 },
       { id: 1, army: "gold", name: "Gold", isBot: true, skill: 1, losses: 0 },
     ],
     units: [], botPlan: [], dice: null, log: [], gameOver: false, result: null, nextUid: 1,
@@ -1733,13 +1748,20 @@ function canTurnNow(u) {
   return actionCost(u, "turn") <= G.actionsLeft;
 }
 
+/* The handles live in a frame carrying the base's own angle, so they stay in
+   the two shaved corners whichever way the unit faces instead of sliding onto
+   its flat rear edge. Rotation preserves handedness -- an arc curving
+   anticlockwise still curves anticlockwise at 180 degrees -- so the mark goes
+   on meaning the same turn; only which corner holds it changes. */
 function rotateHandles(u) {
   if (!canTurnNow(u)) return "";
-  return ["left", "right"].map(dir => `<span class="rot rot-${dir}" data-act="rot${dir === "left" ? "L" : "R"}"
+  const arms = ["left", "right"].map(dir => `<span class="rot rot-${dir}" data-act="rot${dir === "left" ? "L" : "R"}"
     role="button" tabindex="0" aria-label="Turn ${esc(defOf(u).name)} ${dir}">
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path class="arc" d="${ROT_ARC[dir]}"/><path class="head" d="${ROT_HEAD[dir]}"/>
     </svg></span>`).join("");
+  return `<span class="rots${rotLocked() ? " is-locked" : ""}"
+    style="transform:rotate(${baseAngle(u)}deg)">${arms}</span>`;
 }
 
 function renderBoard() {
@@ -1885,7 +1907,7 @@ function renderCurtain() {
   </div>`;
 }
 
-/* "Silver Archer attacks Gold Infantry" reads far faster when the two are
+/* "Green Archer attacks Gold Infantry" reads far faster when the two are
    coloured. Built from the army and unit names rather than hard-coded, so it
    follows a rename, and applied at RENDER time -- G.log stays plain strings
    and keeps round-tripping through JSON. */
@@ -2125,9 +2147,39 @@ function deployActivate(c, r) {
 }
 
 /* The handles are the primary way to turn; the keyboard mirrors them. */
-function turnSelected(dir) {
+/* Because the handles now swing with the base, the corner under the pointer
+   holds the OTHER arrow a moment after a turn -- so a second click landing in
+   the same place would undo the first. The handles go inert until the swing
+   has settled, which is the length of the base's own rotation plus a little.
+   Presentation only: the keys are not gated, since nothing moves under a
+   finger on the keyboard. */
+function rotLockMs() {
+  const sf = UI.speedFactor == null ? 1 : UI.speedFactor;
+  if (UI.reducedMotion || sf === 0) return 0;
+  return Math.round(240 * sf * 1.25) + 90;
+}
+
+function rotLocked() { return UI.rotLock != null && Date.now() < UI.rotLock; }
+
+function armRotLock() {
+  const ms = rotLockMs();
+  if (!ms) return;
+  UI.rotLock = Date.now() + ms;
+  clearTimeout(UI.rotLockTimer);
+  UI.rotLockTimer = setTimeout(() => {
+    UI.rotLock = null;
+    const el = document.querySelector(".rots.is-locked");
+    if (el) el.classList.remove("is-locked");
+  }, ms);
+}
+
+function turnSelected(dir, viaHandle) {
   const u = selUnit();
   if (!u || !canTurnNow(u)) return;
+  if (viaHandle && rotLocked()) return;
+  /* Armed BEFORE the render, or the handles that come back would not know
+     they are inert. */
+  armRotLock();
   faceSelected(((u.face + dir) % 4 + 4) % 4);
 }
 
@@ -2213,8 +2265,8 @@ const ACTS = {
   musterFigs: el => musterAdjust(el.dataset.type, "figs", +el.dataset.delta),
   musterPreset: () => { UI.muster = basicSpec(); updateAll(); },
   musterConfirm: musterConfirm,
-  rotL: () => turnSelected(-1),
-  rotR: () => turnSelected(1),
+  rotL: () => turnSelected(-1, true),
+  rotR: () => turnSelected(1, true),
   speed: cycleSpeed,
   mute: toggleMute,
   menuOpen: openMenu,
@@ -2855,7 +2907,7 @@ function renderMuster() {
   const n = specBases(spec);
 
   el.innerHTML = `<div class="box muster-card">
-    <span class="box-label">Muster &mdash; <span class="side s${UI.musterSide}">${esc((G && G.players ? G.players[UI.musterSide].name : UI.musterSide === 0 ? "Silver" : "Gold"))}</span></span>
+    <span class="box-label">Muster &mdash; <span class="side s${UI.musterSide}">${esc((G && G.players ? G.players[UI.musterSide].name : UI.musterSide === 0 ? "Green" : "Gold"))}</span></span>
     <p class="dim">Ten bases take the field. The King holds the centre of the back row.
       Leave it as it stands for the printed army, or muster your own.</p>
     <table class="muster">
@@ -2959,9 +3011,13 @@ function playFlip() {
       el.style.transition = "none";
       el.style.transform = `translate(${dx}px, ${dy}px)`;
     }
+    /* The selected unit's turn handles ride the same angle, so they swing
+       with the plate rather than jumping to the new corners. */
+    const rots = el.querySelector(".rots");
     if (spun) {
       base.style.transition = "none";
       base.style.transform = `rotate(${was.angle}deg)`;
+      if (rots) { rots.style.transition = "none"; rots.style.transform = `rotate(${was.angle}deg)`; }
     }
     requestAnimationFrame(() => {
       if (dx || dy) {
@@ -2971,8 +3027,10 @@ function playFlip() {
       if (spun) {
         /* A shade longer than the slide: a piece swinging round reads better
            slightly behind the piece travelling. */
-        base.style.transition = `transform ${Math.round(ms * 1.25)}ms var(--ease-out-expo) ${Math.round(d)}ms`;
+        const spin = `transform ${Math.round(ms * 1.25)}ms var(--ease-out-expo) ${Math.round(d)}ms`;
+        base.style.transition = spin;
         base.style.transform = `rotate(${toAngle}deg)`;
+        if (rots) { rots.style.transition = spin; rots.style.transform = `rotate(${toAngle}deg)`; }
       }
     });
   }
@@ -3242,8 +3300,8 @@ function renderHelp() {
 
     <h3>Playing with the mouse</h3>
     <p>Click one of your bases to select it. Its legal moves ring in green and anything it can
-       attack rings in red &mdash; click a ring to act. The two curved arrows at the top of a
-       selected base turn it a quarter turn each way, and turning costs an action like the rest.
+       attack rings in red &mdash; click a ring to act. The two curved arrows in a selected base's
+       front corners turn it a quarter turn each way, and turning costs an action like the rest.
        Everything below is a shortcut for something you can click.</p>
 
     <h3>Keys</h3>
@@ -3564,7 +3622,7 @@ function renderDeployBar() {
     <p class="dep-who"><span class="side s${side}">${esc(G.players[side].name)}</span>
       &mdash; place your line on the near two ranks. The King holds the centre of the back row.</p>
     <p class="dim">Pick a base, then a square to move it, or another base to swap them.
-      The two curved arrows at the top of a selected base turn it.</p>
+      The two curved arrows in a selected base's front corners turn it.</p>
     <div class="muster-actions">
       <button class="btn" data-act="deployAuto">Re-form the line</button>
       <button class="btn" data-act="deployReady">Take the field</button>
@@ -3689,7 +3747,7 @@ function testPosition(specs) {
        any render of a test position throws, which makes __PH.ruleTests()
        unsafe to run from the console mid-game. */
     players: [
-      { id: 0, army: "silver", name: "Silver", isBot: false, skill: 1, losses: 0 },
+      { id: 0, army: "green", name: "Green", isBot: false, skill: 1, losses: 0 },
       { id: 1, army: "gold", name: "Gold", isBot: true, skill: 1, losses: 0 },
     ],
     units: [], dice: null, log: [], gameOver: false, result: null, nextUid: 1,
@@ -4335,7 +4393,7 @@ const UI = {
   eventQueue: [], animating: false, advancing: false, needAdvance: false,
   curtain: false, curtainThen: null, speedFactor: 1, undo: [], help: false,
   musterOpen: false, musterSide: 0, muster: null, musterSpecs: null, pendingOpponent: "ai",
-  muted: false, speed: 1, rects: null,
+  muted: false, speed: 1, rects: null, rotLock: null, rotLockTimer: null,
   menuOpen: false, helpOpen: false, tutorialOpen: false, tutorialStep: 0,
   bloom: false, lastSel: null, entering: false, lastActions: null, lastTurnKey: null,
   pendingSkill: 1, houseRules: null,

@@ -1,7 +1,7 @@
 {
   "name": "PumaHeart",
   "short_name": "PumaHeart",
-  "description": "A faithful port of Lionheart (1997). Gold against Silver on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.",
+  "description": "A faithful port of Lionheart (1997). Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.",
   "start_url": ".",
   "scope": "./",
   "display": "standalone",
