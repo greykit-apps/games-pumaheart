@@ -4,23 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PumaHeart — Medieval Grid Wargame</title>
-<meta name="description" content="A faithful port of Lionheart (1997). Two prides of puma warriors on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta name="description" content="A faithful port of Lionheart (1997). Gold against Silver on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta name="theme-color" content="#0a0a0a">
 <meta name="color-scheme" content="dark">
 <meta name="referrer" content="no-referrer">
 <meta property="og:title" content="PumaHeart">
-<meta property="og:description" content="A faithful port of Lionheart (1997). Two prides of puma warriors on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta property="og:description" content="A faithful port of Lionheart (1997). Gold against Silver on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://greykit.com/games/pumaheart/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="A faithful port of Lionheart (1997). Two prides of puma warriors on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta property="og:image:alt" content="A faithful port of Lionheart (1997). Gold against Silver on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta property="og:url" content="https://greykit.com/games/pumaheart/">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="PumaHeart">
-<meta name="twitter:description" content="A faithful port of Lionheart (1997). Two prides of puma warriors on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta name="twitter:description" content="A faithful port of Lionheart (1997). Gold against Silver on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta name="twitter:image" content="https://greykit.com/games/pumaheart/og.png">
-<meta name="twitter:image:alt" content="A faithful port of Lionheart (1997). Two prides of puma warriors on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta name="twitter:image:alt" content="A faithful port of Lionheart (1997). Gold against Silver on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
@@ -57,14 +57,14 @@
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* --- PumaHeart mapping layer -------------------------------
-     Two prides sit at 14.50:1 and 10.81:1 against --bg, but only
+     The two armies sit at 14.50:1 and 10.81:1 against --bg, but only
      1.34:1 against EACH OTHER: green and amber differ in hue, not
      in brightness, which is the pair red-green colour blindness
      confuses. Side is therefore also carried by glyph treatment
      (side 0 filled, side 1 outlined), by the figure pips, and by
      the aria-label. Never let colour be the only channel. */
-  --pale: var(--green);            /* side 0 */
-  --dun: var(--amber);             /* side 1 */
+  --silver: var(--green);            /* side 0 */
+  --gold: var(--amber);             /* side 1 */
   --sel: var(--white);             /* selection ring            */
   --mv: var(--cyan);               /* legal move destination    */
   --tg: var(--red);                /* legal attack target       */
@@ -72,8 +72,8 @@
   --lane: rgba(0, 204, 204, 0.12);   /* a mounted charge lane   */
   --sq-light: #0d160d;
   --sq-dark: #0a0f0a;
-  --deploy-pale: rgba(0, 255, 65, 0.07);   /* side 0 deployment ranks */
-  --deploy-dun: rgba(255, 176, 0, 0.07);   /* side 1 deployment ranks */
+  --deploy-silver: rgba(0, 255, 65, 0.07);   /* side 0 deployment ranks */
+  --deploy-gold: rgba(255, 176, 0, 0.07);   /* side 1 deployment ranks */
 
   /* Floors at 32px so a 9-wide board fits a 380px viewport. */
   --sq: clamp(32px, min(9vw, 7vh), 58px);
@@ -125,14 +125,14 @@ body::after {
 .box.is-live { border-color: var(--amber-dim); }
 
 /* ============================================================
-   LAYOUT — board centre, status panel beside it, command rail
-   under it. Collapses to one column on a phone, where the rail
-   becomes a fixed thumb-reachable bottom bar.
+   LAYOUT — board centre, status panel beside it, battle-plan
+   bar under it during deployment. Collapses to one column on a
+   phone.
    ============================================================ */
 #app {
   display: grid; gap: 12px; padding: 12px;
   grid-template-columns: minmax(0, 1fr) 300px;
-  grid-template-areas: "hud hud" "board side" "rail side";
+  grid-template-areas: "hud hud" "board side" "bar side";
   align-content: start; min-height: 100%;
 }
 #hud { grid-area: hud; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -141,17 +141,8 @@ body::after {
 #board-wrap { grid-area: board; display: flex; justify-content: center; position: relative; }
 #grid { margin: 0 auto; }
 #side { grid-area: side; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-#rail { grid-area: rail; }
 
-#rail .keys { display: flex; flex-wrap: wrap; gap: 4px 18px; }
-#rail kbd {
-  font: inherit; color: var(--amber); background: none; border: 0; padding: 0;
-}
-#rail .cmd {
-  color: var(--text-dim); white-space: nowrap; cursor: pointer;
-  padding: 2px 4px; border: 1px solid transparent;
-}
-#rail .cmd:hover { color: var(--text); border-color: var(--border); }
+
 
 #log-list { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
 #log-list li { padding: 2px 0; border-bottom: 1px solid var(--panel-2); color: var(--text-dim); }
@@ -160,7 +151,7 @@ body::after {
    BOARD & UNITS
    Side is carried by FOUR channels, never by colour alone: hue,
    a solid vs dashed base ring, the figure pips, and the
-   aria-label. --pale and --dun sit at 14.5:1 and 10.8:1 against
+   aria-label. --silver and --gold sit at 14.5:1 and 10.8:1 against
    the ground but only 1.34:1 against each other -- they differ
    in hue, not brightness, which is exactly the pair red-green
    colour blindness confuses.
@@ -171,8 +162,8 @@ body::after {
   border: 1px solid var(--border); background: var(--sq-dark);
 }
 .sq.lt { background: var(--sq-light); }
-.sq.dz0 { background-image: linear-gradient(var(--deploy-pale), var(--deploy-pale)); }
-.sq.dz1 { background-image: linear-gradient(var(--deploy-dun), var(--deploy-dun)); }
+.sq.dz0 { background-image: linear-gradient(var(--deploy-silver), var(--deploy-silver)); }
+.sq.dz1 { background-image: linear-gradient(var(--deploy-gold), var(--deploy-gold)); }
 /* Highlights live on two pseudo layers rather than one box-shadow, so each
    can animate independently: ::before is the wash and paints UNDER the unit,
    ::after is the ring and paints OVER it, which is what makes a target ring
@@ -206,8 +197,8 @@ body::after {
 #grid.is-entering .u.s1 { --march: -26px; }
 
 .u { position: absolute; inset: 2px; display: flex; align-items: center; justify-content: center; }
-.u.s0 { color: var(--pale); }
-.u.s1 { color: var(--dun); }
+.u.s0 { color: var(--silver); }
+.u.s1 { color: var(--gold); }
 /* The base plate. Stroke stays 2px at every board size, so the shave reads
    the same on a phone as on a desktop. */
 .u .base { position: absolute; inset: 0; width: 100%; height: 100%; transform-origin: 50% 50%; }
@@ -246,7 +237,7 @@ body::after {
 .u .pipnum { position: static; font-size: 10px; color: currentColor; line-height: 1; }
 
 /* Deployment */
-#deploybar { grid-area: rail; background: var(--panel); }
+#deploybar { grid-area: bar; background: var(--panel); }
 #deploybar[hidden] { display: none !important; }
 #deploybar .dep-who { margin: 2px 0 4px; }
 #deploybar p { margin: 2px 0; }
@@ -420,6 +411,43 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 #deploybar { animation: cardIn 300ms var(--ease-out-expo) backwards; }
 
 /* ============================================================
+   ROTATION HANDLES
+   Sit just clear of the selected base's top corners. Ranks are
+   horizontal and packed, so above the unit is the reliably
+   empty direction -- flanking it would land on its neighbours.
+   ============================================================ */
+.rot {
+  /* Fully clear of the base. Sitting on its top corners covered the very
+     corners that show a north-facing unit's facing. */
+  position: absolute; top: calc(var(--sq) * -0.66);
+  width: calc(var(--sq) * 0.56); height: calc(var(--sq) * 0.56);
+  min-width: 20px; min-height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); background: var(--bg);
+  color: var(--amber); cursor: pointer; z-index: 12;
+  animation: rotIn 200ms var(--ease-out-expo) backwards;
+}
+.rot-left  { left: calc(var(--sq) * -0.34); }
+.rot-right { right: calc(var(--sq) * -0.34); }
+.rot-right { animation-delay: 50ms; }
+.rot svg { width: 78%; height: 78%; }
+.rot .arc  { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.rot .head { fill: currentColor; stroke: none; }
+.rot:hover, .rot:focus-visible { border-color: var(--amber); background: var(--panel-2); }
+.rot:active { color: var(--white); }
+@keyframes rotIn { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: none; } }
+
+/* Touch needs a real target, and a phone board is only 32px a square. */
+@media (pointer: coarse) {
+  .rot { width: 40px; height: 40px; top: -48px; }
+  .rot-left  { left: -8px; }
+  .rot-right { right: -8px; }
+}
+
+/* The board needs headroom so handles on the back rank are not clipped. */
+#board-wrap { padding-top: calc(var(--sq) * 0.76); }
+
+/* ============================================================
    COMBAT CUT-IN
    A cut-in, not a dialog: pointer-events: none, self-dismissing,
    nothing waits on the player. The one moment in the game where
@@ -507,8 +535,8 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 
 /* HUD & status */
 #hud-state { display: flex; align-items: center; gap: 12px; }
-.side.s0 { color: var(--pale); }
-.side.s1 { color: var(--dun); }
+.side.s0 { color: var(--silver); }
+.side.s1 { color: var(--gold); }
 .acts { letter-spacing: 2px; color: var(--amber); }
 .rnd { color: var(--text-dim); }
 .unit-name { margin: 0 0 8px; letter-spacing: 0.1em; text-transform: uppercase; }
@@ -528,21 +556,16 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 }
 
 @media (pointer: coarse) {
-  .btn, .icon-btn, #rail .cmd { min-height: 44px; display: inline-flex; align-items: center; }
+  .btn, .icon-btn, .hud-new .cmd { min-height: 44px; display: inline-flex; align-items: center; }
 }
 
 @media (max-width: 760px) {
   #app {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "hud" "board" "side";
-    padding-bottom: calc(var(--rail-h, 84px) + 12px);
   }
-  #rail .keys { gap: 2px 14px; font-size: 13px; }
-  #rail {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
-    border-left: 0; border-right: 0; border-bottom: 0;
-    background: var(--bg);
-  }
+  /* The deploy bar rides under the board on a phone rather than floating. */
+  #deploybar { order: 3; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -561,6 +584,9 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
     <span id="hud-state"></span>
     <span class="hud-new">
       <span class="cmd" data-act="menuOpen" role="button" tabindex="0">New game</span>
+      <span class="cmd" data-act="undo" role="button" tabindex="0" id="hud-undo">Undo</span>
+      <span class="cmd" data-act="endTurn" role="button" tabindex="0">End turn</span>
+      <span class="cmd" data-act="help" role="button" tabindex="0">Help</span>
       <span class="cmd" data-act="speed" role="button" tabindex="0" id="hud-speed"></span>
       <span class="cmd" data-act="mute" role="button" tabindex="0" id="hud-mute"></span>
     </span>
@@ -589,10 +615,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   </aside>
 
   <nav id="deploybar" class="box" hidden aria-label="Battle plan"></nav>
-  <nav id="rail" class="box" aria-labelledby="rail-label">
-    <span class="box-label" id="rail-label">Orders</span>
-    <div class="keys" id="rail-keys"></div>
-  </nav>
+
 </div>
 <div id="curtain" hidden></div>
 <div id="muster" hidden></div>
@@ -813,10 +836,11 @@ function newGame(seed, opts) {
     cfg: { setup: (opts && opts.setup) || "basic", opponent: "ai",
            massiveInfantry: false, partialBases: true, roundCap: 0 },
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
-    /* Pride names are placeholders for the author's own wording. */
+    /* p.2: "There are two armies -- one gold, one silver." The names are the
+       rulebook's own, not ours. */
     players: [
-      { id: 0, pride: "pale", name: "Pale", isBot: false, skill: 1, losses: 0 },
-      { id: 1, pride: "dun", name: "Dun", isBot: true, skill: 1, losses: 0 },
+      { id: 0, army: "silver", name: "Silver", isBot: false, skill: 1, losses: 0 },
+      { id: 1, army: "gold", name: "Gold", isBot: true, skill: 1, losses: 0 },
     ],
     units: [], botPlan: [], dice: null, log: [], gameOver: false, result: null, nextUid: 1,
   };
@@ -1612,6 +1636,18 @@ const UNIT_GLYPH = {
 };
 const GLYPH_STROKE = { archer: true, peasant: true, heavy: true };
 
+/* Two curved arrows, drawn rather than typed: no font is loaded, so a glyph
+   like U+21BA cannot be relied on to exist. Each is a three-quarter arc with
+   a solid head showing which way it sweeps. */
+const ROT_ARC = {
+  left:  "M17.5 7.2A7.5 7.5 0 1 0 19 12",
+  right: "M6.5 7.2A7.5 7.5 0 1 1 5 12",
+};
+const ROT_HEAD = {
+  left:  "M17.9 2.6l-4.6 4.1 5.6 2.2z",
+  right: "M6.1 2.6l4.6 4.1-5.6 2.2z",
+};
+
 /* Facing is carried by the outline of the base itself: the two corners at the
    FRONT are shaved off, so a unit points the way a ship's prow does. A small
    chevron was the previous channel and it was too fine to read at a glance
@@ -1672,7 +1708,28 @@ function renderUnit(u) {
       <path d="${UNIT_GLYPH[u.type]}"/>
     </svg>
     <span class="pips" aria-hidden="true">${pips}</span>
+    ${UI.sel === u.uid ? rotateHandles(u) : ""}
   </div>`;
+}
+
+/* Turning is legal while deploying (free) or on your own turn with an action
+   left -- Heavy Infantry costs two, so it may be affordable for one unit and
+   not another on the same turn. */
+function canTurnNow(u) {
+  if (!u || !u.alive) return false;
+  if (G.phase === "deploy") return u.side === G.deploySide && !UI.curtain;
+  if (G.gameOver || !isHuman(G.turn) || u.side !== G.turn) return false;
+  if (UI.animating || UI.curtain || UI.menuOpen || UI.helpOpen || UI.musterOpen) return false;
+  return actionCost(u, "turn") <= G.actionsLeft;
+}
+
+function rotateHandles(u) {
+  if (!canTurnNow(u)) return "";
+  return ["left", "right"].map(dir => `<span class="rot rot-${dir}" data-act="rot${dir === "left" ? "L" : "R"}"
+    role="button" tabindex="0" aria-label="Turn ${esc(defOf(u).name)} ${dir}">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path class="arc" d="${ROT_ARC[dir]}"/><path class="head" d="${ROT_HEAD[dir]}"/>
+    </svg></span>`).join("");
 }
 
 function renderBoard() {
@@ -1818,9 +1875,25 @@ function renderCurtain() {
   </div>`;
 }
 
+/* "Silver Archer attacks Gold Infantry" reads far faster when the two are
+   coloured. Built from the army and unit names rather than hard-coded, so it
+   follows a rename, and applied at RENDER time -- G.log stays plain strings
+   and keeps round-tripping through JSON. */
+function colourNames(escaped) {
+  const armies = G.players.map(p => p.name).join("|");
+  /* Longest unit name first, so "Heavy Infantry" wins over "Infantry". */
+  const units = Object.keys(UNIT_DEFS).map(t => UNIT_DEFS[t].name)
+    .sort((a, b) => b.length - a.length).join("|");
+  const re = new RegExp("\\b(" + armies + ") (" + units + ")\\b", "g");
+  return escaped.replace(re, (m, army, unit) => {
+    const side = G.players.findIndex(p => p.name === army);
+    return `<span class="side s${side}">${army} ${unit}</span>`;
+  });
+}
+
 function renderLog() {
   document.getElementById("log-list").innerHTML =
-    G.log.slice(-40).reverse().map(l => `<li>${esc(l)}</li>`).join("");
+    G.log.slice(-40).reverse().map(l => `<li>${colourNames(esc(l))}</li>`).join("");
 }
 
 function log(msg) {
@@ -2041,6 +2114,13 @@ function deployActivate(c, r) {
   updateAll();
 }
 
+/* The handles are the primary way to turn; the keyboard mirrors them. */
+function turnSelected(dir) {
+  const u = selUnit();
+  if (!u || !canTurnNow(u)) return;
+  faceSelected(((u.face + dir) % 4 + 4) % 4);
+}
+
 function faceSelected(face) {
   const sel = selUnit();
   if (!sel || sel.face === face) return;
@@ -2101,8 +2181,8 @@ function passTurn() {
 }
 
 const ACTS = {
-  turnLeft: () => { const s = selUnit(); if (s) faceSelected((s.face + 3) % 4); },
-  turnRight: () => { const s = selUnit(); if (s) faceSelected((s.face + 1) % 4); },
+  turnLeft: () => turnSelected(-1),
+  turnRight: () => turnSelected(1),
   attack: attackAhead,
   next: () => cycleUnit(1),
   prev: () => cycleUnit(-1),
@@ -2123,6 +2203,8 @@ const ACTS = {
   musterFigs: el => musterAdjust(el.dataset.type, "figs", +el.dataset.delta),
   musterPreset: () => { UI.muster = basicSpec(); updateAll(); },
   musterConfirm: musterConfirm,
+  rotL: () => turnSelected(-1),
+  rotR: () => turnSelected(1),
   speed: cycleSpeed,
   mute: toggleMute,
   menuOpen: openMenu,
@@ -2196,8 +2278,8 @@ function setupInput() {
     if (ev.key === "Enter" || ev.key === " ") {
       /* Read the focused element, not ev.target: delegation is on document,
          and a <span role="button"> gets no native Enter-to-click the way a
-         real <button> does. Without this the whole command rail is dead to
-         the keyboard. */
+         real <button> does. Without this every such control is dead to the
+         keyboard. */
       const focused = document.activeElement;
       const act = focused && focused.closest && focused.closest("[data-act]");
       if (act) { ev.preventDefault(); dispatchAct(act.dataset.act, act); return; }
@@ -2243,7 +2325,7 @@ function startGame(seed, opts) {
     return;
   }
   UI.cur = idx(4, H - 1);
-  log("The prides take the field.");
+  log("The armies take the field.");
   advance();
 }
 
@@ -2763,7 +2845,7 @@ function renderMuster() {
   const n = specBases(spec);
 
   el.innerHTML = `<div class="box muster-card">
-    <span class="box-label">Muster &mdash; <span class="side s${UI.musterSide}">${esc((G && G.players ? G.players[UI.musterSide].name : UI.musterSide === 0 ? "Pale" : "Dun"))}</span></span>
+    <span class="box-label">Muster &mdash; <span class="side s${UI.musterSide}">${esc((G && G.players ? G.players[UI.musterSide].name : UI.musterSide === 0 ? "Silver" : "Gold"))}</span></span>
     <p class="dim">Ten bases take the field. The King holds the centre of the back row.
       Leave it as it stands for the printed army, or muster your own.</p>
     <table class="muster">
@@ -3148,6 +3230,12 @@ function renderHelp() {
       <tbody>${rows}</tbody>
     </table></div>
 
+    <h3>Playing with the mouse</h3>
+    <p>Click one of your bases to select it. Its legal moves ring in green and anything it can
+       attack rings in red &mdash; click a ring to act. The two curved arrows above a selected
+       base turn it a quarter turn each way, and turning costs an action like anything else.
+       Everything below is a shortcut for something you can click.</p>
+
     <h3>Keys</h3>
     <table class="ref keys">${keys}</table>
 
@@ -3231,7 +3319,7 @@ function fastForward(actions) {
 const SHOTS = {
   basic() {
     newGame(7, { setup: "basic" });
-    log("The prides take the field.");
+    log("The armies take the field.");
   },
 
   muster() {
@@ -3453,22 +3541,20 @@ function deployReady() {
   }
   UI.sel = null;
   go("play", "begin");
-  log("The prides take the field.");
+  log("The armies take the field.");
   advance();
 }
 
 function renderDeployBar() {
   const el = document.getElementById("deploybar");
-  const rail = document.getElementById("rail");
-  if (G.phase !== "deploy") { el.hidden = true; if (rail) rail.hidden = false; return; }
+  if (G.phase !== "deploy") { el.hidden = true; return; }
   el.hidden = false;
-  if (rail) rail.hidden = true;          /* the orders rail is for playing, not placing */
   const side = G.deploySide;
   el.innerHTML = `<span class="box-label">Battle Plan</span>
     <p class="dep-who"><span class="side s${side}">${esc(G.players[side].name)}</span>
       &mdash; place your line on the near two ranks. The King holds the centre of the back row.</p>
     <p class="dim">Pick a base, then a square to move it, or another base to swap them.
-      <kbd>1</kbd>&ndash;<kbd>4</kbd> or <kbd>Q</kbd>/<kbd>E</kbd> to face it.</p>
+      The two arrows above a selected base turn it.</p>
     <div class="muster-actions">
       <button class="btn" data-act="deployAuto">Re-form the line</button>
       <button class="btn" data-act="deployReady">Take the field</button>
@@ -3593,8 +3679,8 @@ function testPosition(specs) {
        any render of a test position throws, which makes __PH.ruleTests()
        unsafe to run from the console mid-game. */
     players: [
-      { id: 0, pride: "pale", name: "Pale", isBot: false, skill: 1, losses: 0 },
-      { id: 1, pride: "dun", name: "Dun", isBot: true, skill: 1, losses: 0 },
+      { id: 0, army: "silver", name: "Silver", isBot: false, skill: 1, losses: 0 },
+      { id: 1, army: "gold", name: "Gold", isBot: true, skill: 1, losses: 0 },
     ],
     units: [], dice: null, log: [], gameOver: false, result: null, nextUid: 1,
   };
@@ -4257,13 +4343,6 @@ function esc(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-function renderRail() {
-  document.getElementById("rail-keys").innerHTML = RAIL
-    .map(([k, label, act]) => `<span class="cmd" data-act="${esc(act)}" role="button"
-      tabindex="0" aria-label="${esc(label)}, key ${esc(k)}">[<kbd>${esc(k)}</kbd>] ${esc(label)}</span>`)
-    .join("");
-}
-
 window.__PH = {
   get G() { return G; },
   newGame, startGame, runSim, runMatch, playBotGame, playRandomGame, ruleTests,
@@ -4276,14 +4355,6 @@ window.__PH = {
   legalActions, buildGrid, UNIT_DEFS, DICE_DIST,
 };
 
-/* The rail is fixed to the bottom on narrow screens, so #app must reserve its
-   ACTUAL height -- it grows with the pointer:coarse 44px rule and with
-   wrapping, and any hard-coded reservation is wrong on some device. */
-function syncRailHeight() {
-  const rail = document.getElementById("rail");
-  document.documentElement.style.setProperty("--rail-h", rail.offsetHeight + "px");
-}
-
 function boot() {
   validateTables();
   const shot = /[#&]shot=([a-z]+)/.exec(location.hash);
@@ -4291,15 +4362,12 @@ function boot() {
   UI.houseRules = defaultHouseRules();
   UI.menu.house = {};
   UI.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  renderRail();
   setupInput();
-  if (shot && runShot(shot[1])) { syncRailHeight(); return; }
+  if (shot && runShot(shot[1])) return;
   startGame();
   try {
     if (localStorage.getItem(TUTORIAL_KEY) !== "1") { UI.tutorialOpen = true; updateAll(); }
   } catch (e) {}
-  syncRailHeight();
-  addEventListener("resize", syncRailHeight, { passive: true });
   console.log(
     "%cPumaHeart — a port of Lionheart (Parker Brothers, 1997). Board is 9x8, not the 9x10 the internet claims.",
     "color:#00ff41"

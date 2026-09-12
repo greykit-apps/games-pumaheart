@@ -1,6 +1,6 @@
 # PumaHeart
 
-**A faithful port of Lionheart (Parker Brothers, 1997). Two prides of puma warriors on nine squares by eight, two actions a turn.**
+**A faithful port of Lionheart (Parker Brothers, 1997). Gold against Silver on nine squares by eight, two actions a turn.**
 
 A port, not a redesign. Every rule below is transcribed from the official Parker Brothers
 rulebook for *Lionheart* — designed by Larry Harris, product `40742-I` — which Hasbro still
@@ -69,8 +69,9 @@ Win by killing the enemy King, or by leaving it standing alone on the field.
   ahead; Marshal searches wider. Measured over 150 games a side: Marshal beats Squire 93%,
   Knight beats Squire 90%, Marshal beats Knight 61%.
 - **Hot-seat**, with a handover curtain standing in for the rulebook's upright game box.
-- **Full keyboard play**, a screen-reader commentary separate from the field report, and a
-  reduced-motion path that skips animation entirely rather than merely disabling transitions.
+- **Mouse-first**, with full keyboard play alongside it, a screen-reader commentary separate
+  from the field report, and a reduced-motion path that skips animation entirely rather than
+  merely disabling transitions.
 - **House rules**, all off by default so the shipped defaults are the printed game — including
   the rulebook's own optional Massive Infantry rule.
 
@@ -128,7 +129,12 @@ column, which is possible only if the column count is odd.
 It matters. Four empty ranks separate the armies, so contact arrives almost immediately and a
 rider threatens from the opening position.
 
-## Keyboard
+## Also plays by keyboard
+
+Everything is done with the mouse: click a base, then a square to
+move it or a ring to attack; the two curved arrows above a selected base turn it. These
+shortcuts mirror that for anyone who prefers them.
+
 
 | Key | |
 |---|---|
@@ -178,6 +184,6 @@ Screenshots regenerate from fixed seeds: `#shot=basic`, `muster`, `deploy`, `com
 
 *Lionheart* was designed by **Larry Harris** and published by **Parker Brothers** in 1997. This
 is an unofficial fan port of a long out-of-print game, built from the publisher's own rulebook.
-All rules and unit names are theirs; the puma prides, the artwork and the code are not.
+All rules, army names and unit names are theirs; the artwork and the code are not.
 
 Game code by shandower with AI assistance from Claude.
