@@ -507,8 +507,8 @@ function newGame(seed) {
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* Pride names are placeholders for the author's own wording. */
     players: [
-      { id: 0, pride: "pale", name: "Pale", isBot: false, losses: 0 },
-      { id: 1, pride: "dun", name: "Dun", isBot: true, losses: 0 },
+      { id: 0, pride: "pale", name: "Pale", isBot: false, skill: 1, losses: 0 },
+      { id: 1, pride: "dun", name: "Dun", isBot: true, skill: 1, losses: 0 },
     ],
     units: [], botPlan: [], dice: null, log: [], gameOver: false, result: null, nextUid: 1,
   };
@@ -949,6 +949,69 @@ function pickWeighted(acts) {
   return pickOne(acts);
 }
 
+/* Bot-vs-bot. Sides are swapped halfway so a first-move edge cannot be
+   mistaken for a skill edge. */
+function playBotGame(seed, skillLo, skillHi, swap) {
+  newGame(seed);
+  G.cfg.roundCap = 60;
+  const s0 = swap ? skillHi : skillLo, s1 = swap ? skillLo : skillHi;
+  G.players[0].isBot = true; G.players[0].skill = s0;
+  G.players[1].isBot = true; G.players[1].skill = s1;
+  HARNESS.watermark = {};
+  HARNESS.expectedUnits = G.units.length;
+
+  let steps = 0;
+  while (!G.gameOver) {
+    if (++steps > 20000) throw new Error(`Runaway at round ${G.round} seed ${seed}`);
+    const v = checkVictory(G);
+    if (v) { G.result = v; G.gameOver = true; break; }
+    if (G.round > G.cfg.roundCap) { G.result = { winner: null, reason: "cap" }; G.gameOver = true; break; }
+    const grid = buildGrid(G);
+    if (G.actionsLeft <= 0 || !legalActions(G, grid, G.turn).length) { endTurn(G); assertInvariants(); continue; }
+    const plan = botChooseTurnChecked(G, G.turn, G.players[G.turn].skill);
+    if (!plan.length) { endTurn(G); assertInvariants(); continue; }
+    for (const a of plan) {
+      const g2 = buildGrid(G);
+      if (!legalActions(G, g2, G.turn).some(x => sameAction(x, a))) break;
+      applyAction(G, a);
+      const won = checkVictory(G);
+      if (won) { G.result = won; G.gameOver = true; }
+      assertInvariants();
+      if (G.gameOver) break;
+    }
+  }
+  /* Which SKILL won, independent of which side it played. */
+  const winnerSkill = G.result.winner === null ? null : G.players[G.result.winner].skill;
+  return { winnerSkill, reason: G.result.reason, rounds: G.round };
+}
+
+function runMatch(skillLo, skillHi, games, startSeed) {
+  HARNESS.resetTally();
+  HARNESS.maxPlanMs = 0;
+  const t0 = Date.now();
+  const out = { lo: SKILL[skillLo].name, hi: SKILL[skillHi].name,
+                loWins: 0, hiWins: 0, draws: 0, crashes: [], rounds: [] };
+  for (let i = 0; i < games; i++) {
+    const seed = (startSeed || 1) + i;
+    try {
+      const r = playBotGame(seed, skillLo, skillHi, i % 2 === 1);
+      out.rounds.push(r.rounds);
+      if (r.winnerSkill === null) out.draws++;
+      else if (r.winnerSkill === skillHi) out.hiWins++;
+      else out.loWins++;
+    } catch (e) { out.crashes.push({ seed, error: e.message }); }
+  }
+  const played = out.loWins + out.hiWins;
+  return {
+    matchup: `${out.hi} vs ${out.lo}`, games, crashes: out.crashes,
+    hiWins: out.hiWins, loWins: out.loWins, draws: out.draws,
+    hiWinRate: played ? +(out.hiWins / played).toFixed(3) : 0,
+    avgRounds: out.rounds.length ? +(out.rounds.reduce((a, b) => a + b, 0) / out.rounds.length).toFixed(1) : 0,
+    maxPlanMs: +(HARNESS.maxPlanMs || 0).toFixed(1),
+    ms: Date.now() - t0,
+  };
+}
+
 function runSim(n, startSeed) {
   const t0 = Date.now();
   HARNESS.resetTally();
@@ -982,12 +1045,6 @@ function runSim(n, startSeed) {
   };
 }
 
-window.__PH = {
-  get G() { return G; },
-  newGame, startGame, runSim, playRandomGame, ruleTests, assertInvariants, checkVictory,
-  tryAction, activateSquare, get UI() { return UI; },
-  legalActions, buildGrid, UNIT_DEFS, DICE_DIST,
-};
 
 /* ============================================================
    SAVE / LOAD
@@ -1052,7 +1109,10 @@ const STEP = {
       const acts = legalActions(G, grid, G.turn);
       if (!acts.length || G.actionsLeft <= 0) { go("play", "endTurn"); return NEXT; }
       if (isHuman(G.turn)) return WAIT;              /* the only human WAIT in play */
-      if (!G.botPlan || !G.botPlan.length) G.botPlan = [pickWeighted(acts)];
+      if (!G.botPlan || !G.botPlan.length) {
+        G.botPlan = botChooseTurnChecked(G, G.turn, G.players[G.turn].skill);
+      }
+      if (!G.botPlan.length) { go("play", "endTurn"); return NEXT; }
       go("play", "botAct"); return NEXT;
     },
 
@@ -1580,6 +1640,277 @@ function startGame(seed, opts) {
 }
 
 /* ============================================================
+   AI
+   Exhaustive first ply, beam-pruned second ply, closed-form
+   expected values, no rollouts. Rollouts were rejected because
+   they would consume rnd() in unbounded amounts that depend on
+   search internals; DICE_DIST gives exact probabilities for
+   free. botChooseTurn() therefore touches G.rng ZERO times,
+   which invariant 12 asserts rather than assumes -- including
+   the difficulty noise, which is derived from a hash of the
+   position instead of a draw.
+
+   Material is counted in FIGURES, not bases, because that is
+   how the game counts: wearing a 4-man base down to 1 costs
+   three quarters of its strength AND three quarters of its
+   firepower, and the evaluator sees both for free.
+   ============================================================ */
+
+const AI_MAX_LEAVES = 4000;
+
+/* Per-figure worth. An Infantryman is the unit of account at 15: one die,
+   one hit to remove. A Knight figure rolls two dice and takes two hits, so
+   it is worth about three of them. An Archer figure rolls one die but hits
+   on arrows (1/3, against an axe's 1/2) and shoots over heads at range. */
+const FIG_VALUE = { king: 400, knight: 45, heavy: 40, mercenary: 30,
+                    archer: 18, infantry: 15, peasant: 10 };
+const KING_LOSS = 100000;
+
+const W_ATTACK = 0.45;    /* value of an attack available right now       */
+/* Closing the gap has to be worth more than a free turn, or both sides sit
+   in their deployment rows until the round cap -- measured, not guessed:
+   at 1.2 the best advance scored -4.8 against dozens of 0-delta turns. */
+const W_ADVANCE = 3;      /* per rank closer to the enemy King            */
+const W_FACING = 3;       /* pointed at the nearest enemy                 */
+/* Cover was the stalemate. The printed opening is already maximally packed,
+   so every move broke three adjacencies and cost 6 -- the army was glued to
+   its deployment. Kept only as a whisper for tie-breaking. */
+const W_COVER = 0.5;      /* per orthogonally adjacent friendly           */
+const W_KINGSAFE = 8;     /* per enemy within 3 squares of my King        */
+const W_KINGLANE = 120;   /* an enemy rider has a clear run at my King    */
+const W_ARCHER = 6;       /* my archer has something in its block         */
+const W_SCREEN = 5;       /* my archer has a friendly directly ahead      */
+
+const SKILL = [
+  { name: "Squire",  beam: 1,  threat: false, kingLane: false, archer: false, noise: "top4" },
+  { name: "Knight",  beam: 6,  threat: true,  kingLane: true,  archer: true,  noise: "second" },
+  { name: "Marshal", beam: 14, threat: true,  kingLane: true,  archer: true,  noise: "none" },
+];
+
+/* A light clone. JSON round-tripping G ~900 times per turn is far too slow;
+   the search only needs the position. */
+function snapshot(P) {
+  return {
+    actionsLeft: P.actionsLeft, turn: P.turn,
+    units: P.units.map(u => ({ uid: u.uid, side: u.side, type: u.type, figs: u.figs,
+                               c: u.c, r: u.r, face: u.face, alive: u.alive,
+                               attackedThisTurn: u.attackedThisTurn })),
+  };
+}
+
+/* Exact outcome distribution for one attack, from DICE_DIST. Never rolls. */
+function expectedAttack(P, atk, def) {
+  const ad = defOf(atk), dd = defOf(def);
+
+  if (needsLastManDuel(atk, def)) {
+    /* One die; on a hit, roll it again. A PANIC either time panics. */
+    const pHit = ad.hitFace === AXE ? P_AXE : P_ARROW;
+    const pPanic = P_PANIC + pHit * P_PANIC;
+    const pTwo = pHit * pHit;
+    return { pPanic, eRemoved: pTwo, pKill: def.figs === 1 ? pTwo : 0 };
+  }
+
+  const n = diceFor(atk);
+  let pPanic = 0, eRemoved = 0, pKill = 0;
+  for (const row of DICE_DIST[n]) {
+    if (panicsFrom(ad, row.panics, n)) { pPanic += row.p; continue; }
+    const hits = hitsFrom(ad, row.axes, row.arrows);
+    const removed = Math.min(def.figs, Math.floor(hits / dd.htk));
+    eRemoved += row.p * removed;
+    if (removed >= def.figs) pKill += row.p;
+  }
+  return { pPanic, eRemoved, pKill };
+}
+
+function unitWorth(u) { return u.figs * FIG_VALUE[u.type]; }
+
+function chebyshev(a, b) { return Math.max(Math.abs(a.c - b.c), Math.abs(a.r - b.r)); }
+
+/* Does an enemy rider have an unblocked straight run to a square from which
+   it faces my King? This is the single most important thing the bot has to
+   learn, so it carries a weight of about 1.3 Knights. */
+function kingLaneThreat(P, grid, king) {
+  for (const e of P.units) {
+    if (!e.alive || e.side === king.side || !defOf(e).mounted) continue;
+    const F = DIRS[e.face];
+    for (let k = 1; k < Math.max(W, H); k++) {
+      const c = e.c + F[0] * k, r = e.r + F[1] * k;
+      if (!inBoard(c, r)) break;
+      const occ = grid[idx(c, r)];
+      if (occ) {
+        if (occ === king.uid) return true;          /* runs straight onto him */
+        break;
+      }
+      /* stopping here, would it then be adjacent and facing the King? */
+      const ahead = { c: c + F[0], r: r + F[1] };
+      if (ahead.c === king.c && ahead.r === king.r) return true;
+    }
+  }
+  return false;
+}
+
+function sideScore(P, grid, s, sk) {
+  let score = 0;
+  const king = kingOf(P, s);
+  if (!king) return -KING_LOSS;
+
+  const foeKing = kingOf(P, 1 - s);
+  const mine = [], foes = [];
+  for (const u of P.units) {
+    if (!u.alive) continue;
+    (u.side === s ? mine : foes).push(u);
+    if (u.side === s) score += unitWorth(u);
+  }
+
+  for (const u of mine) {
+    /* Attacks available to me right now. */
+    for (const t of attackTargets(P, grid, u)) {
+      const ex = expectedAttack(P, u, t);
+      score += W_ATTACK * (ex.eRemoved * FIG_VALUE[t.type] + (t.type === "king" ? ex.pKill * KING_LOSS : 0));
+    }
+    /* Close the distance -- deliberately tiny, so it breaks ties without
+       ever outweighing a trade. On a board with four empty ranks it matters
+       far less than threat does. */
+    if (foeKing) score += W_ADVANCE * (H - Math.abs(u.r - foeKing.r));
+
+    /* Facing the nearest enemy. */
+    let near = null, nd = 99;
+    for (const f of foes) { const d = chebyshev(u, f); if (d < nd) { nd = d; near = f; } }
+    if (near) {
+      const F = DIRS[u.face];
+      if (F[0] * (near.c - u.c) + F[1] * (near.r - u.r) > 0) score += W_FACING;
+    }
+    for (const m of mine) {
+      if (m !== u && Math.abs(m.c - u.c) + Math.abs(m.r - u.r) === 1) score += W_COVER / 2;
+    }
+    if (sk.archer && u.type === "archer") {
+      if (attackTargets(P, grid, u).length) score += W_ARCHER;
+      const ahead = stepFrom(u.c, u.r, u.face, 1);
+      const inFront = inBoard(ahead.c, ahead.r) && byUid(P, grid[idx(ahead.c, ahead.r)]);
+      if (inFront && inFront.side === s) score += W_SCREEN;
+    }
+  }
+
+  if (sk.threat) {
+    for (const f of foes) if (chebyshev(f, king) <= 3) score -= W_KINGSAFE;
+  }
+  if (sk.kingLane && kingLaneThreat(P, grid, king)) score -= W_KINGLANE;
+  return score;
+}
+
+/* Zero-sum: positive is good for `side`. */
+function evaluate(P, side, sk) {
+  const grid = buildGrid(P);
+  return sideScore(P, grid, side, sk) - sideScore(P, grid, 1 - side, sk);
+}
+
+/* Applies an action WITHOUT touching rnd(). An attack is resolved to its
+   most likely figure loss rather than rolled, which keeps the second ply
+   deterministic and the dice stream untouched. */
+function applyQuiet(P, a) {
+  const u = P.units.find(x => x.uid === a.uid);
+  P.actionsLeft -= actionCost(u, a.kind);
+  if (a.kind === "move") { u.c = a.c; u.r = a.r; return; }
+  if (a.kind === "turn") { u.face = a.face; return; }
+  const def = P.units.find(x => x.uid === a.defUid);
+  u.attackedThisTurn = true;
+  const ex = expectedAttack(P, u, def);
+  const removed = Math.min(def.figs, Math.round(ex.eRemoved));
+  if (removed > 0) {
+    def.figs -= removed;
+    if (def.figs <= 0) { def.figs = 0; def.alive = false; }
+  }
+}
+
+/* Invariant 12. The search is pure, so a bot turn must leave G.rng
+   byte-identical -- otherwise the dice stream would depend on search
+   internals and a saved game would not replay. Asserted, not assumed. */
+function botChooseTurnChecked(P, side, skill) {
+  const before = P.rng;
+  const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+  const t0 = now();
+  const plan = botChooseTurn(P, side, skill);
+  const ms = now() - t0;
+  if (typeof HARNESS !== "undefined" && HARNESS) {
+    HARNESS.maxPlanMs = Math.max(HARNESS.maxPlanMs || 0, ms);
+  }
+  if (P.rng !== before) {
+    throw new Error(`Bot consumed rnd(): ${before} -> ${P.rng} (the search must be pure)`);
+  }
+  return plan;
+}
+
+function actionDelta(P, base, a, side, sk) {
+  const P2 = snapshot(P);
+  applyQuiet(P2, a);
+  return evaluate(P2, side, sk) - base;
+}
+
+/* Deterministic noise: a hash of the POSITION, never a draw from rnd().
+   That is what lets the bot be imperfect at low skill while leaving the
+   dice stream byte-identical across a turn. */
+function posHash(P) {
+  let h = 2166136261;
+  for (const u of P.units) {
+    h ^= u.uid + (u.c * 31) + (u.r * 7) + (u.face * 3) + (u.figs * 11) + (u.alive ? 1 : 0);
+    h = Math.imul(h, 16777619);
+  }
+  h ^= P.turn * 13 + P.actionsLeft * 29;
+  return h >>> 0;
+}
+
+function botChooseTurn(P, side, skillIx) {
+  const sk = SKILL[Math.max(0, Math.min(SKILL.length - 1, skillIx | 0))];
+  const grid = buildGrid(P);
+  const acts = legalActions(P, grid, side);
+  if (!acts.length) return [];
+
+  const base = evaluate(P, side, sk);
+  const scored = acts.map(a => ({ a, s: actionDelta(P, base, a, side, sk) }));
+  scored.sort((x, y) => y.s - x.s);
+  const h = posHash(P);
+
+  /* Squire does not look ahead at all. It takes the best IMMEDIATE action and
+     replans, which is both cheaper and genuinely weaker -- a shallower search,
+     not merely a noisier one. Returning a single action is what makes it
+     greedy: the phase machine calls back for the next one. */
+  if (sk.beam <= 1) {
+    const pool = scored.slice(0, Math.min(4, scored.length));
+    return [pool[h % pool.length].a];
+  }
+
+  /* Shrink the beam to fit the leaf budget. This depends only on the
+     position, so seeds still replay identically. */
+  const beam = Math.max(1, Math.min(sk.beam, Math.floor(AI_MAX_LEAVES / Math.max(1, acts.length))));
+
+  const results = [];
+  for (const cand of scored.slice(0, beam)) {
+    const P2 = snapshot(P);
+    applyQuiet(P2, cand.a);
+    let total = evaluate(P2, side, sk);
+    let second = null;
+    if (P2.actionsLeft > 0) {
+      const g2 = buildGrid(P2);
+      const b2 = evaluate(P2, side, sk);
+      let bestS = 0;
+      for (const b of legalActions(P2, g2, side)) {
+        const d = actionDelta(P2, b2, b, side, sk);
+        if (d > bestS) { bestS = d; second = b; }
+      }
+      total += bestS;
+    }
+    results.push({ total, first: cand.a, second });
+  }
+  results.sort((x, y) => y.total - x.total);
+
+  let pick = results[0];
+  if (sk.noise === "second" && results.length > 1 && (h % 5) === 0) {
+    pick = results[1];                       /* second best one turn in five */
+  }
+  return pick.second ? [pick.first, pick.second] : [pick.first];
+}
+
+/* ============================================================
    RULE TESTS — hand-built positions for the rules random play
    cannot reach. A full 4-dice base suffers a total panic once in
    1296 attacks, so the retreat cascade -- the single riskiest
@@ -1942,6 +2273,14 @@ function renderRail() {
       tabindex="0" aria-label="${esc(label)}, key ${esc(k)}">[<kbd>${esc(k)}</kbd>] ${esc(label)}</span>`)
     .join("");
 }
+
+window.__PH = {
+  get G() { return G; },
+  newGame, startGame, runSim, runMatch, playBotGame, playRandomGame, ruleTests,
+  botChooseTurn, evaluate, expectedAttack, SKILL, assertInvariants, checkVictory,
+  tryAction, activateSquare, get UI() { return UI; },
+  legalActions, buildGrid, UNIT_DEFS, DICE_DIST,
+};
 
 /* The rail is fixed to the bottom on narrow screens, so #app must reserve its
    ACTUAL height -- it grows with the pointer:coarse 44px rule and with
