@@ -145,6 +145,12 @@ body::after {
 .disclose[open] > summary::before { content: "\2212 "; }
 .disclose > summary:hover, .disclose > summary:focus-visible { color: var(--text); }
 .fortune-note { margin: 5px 0 0; font-size: 12px; }
+/* The opening the library just laid, named where it can replace itself. */
+.dep-opening { margin: 6px 0 0; }
+.dep-opening .box-label-ish {
+  color: var(--amber); letter-spacing: 0.12em; text-transform: uppercase;
+  font-size: 12px; margin-right: 8px;
+}
 
 /* ============================================================
    LAYOUT — board centre, status panel beside it, battle-plan
@@ -855,7 +861,7 @@ const UNIT_DEFS = {
   archer: {
     name: "Archer", perPlayer: 8, perBase: 4, dicePerFig: 1,
     hitFace: ARROW, htk: 1, mounted: false, panics: true,
-    note: "Attacks any single enemy in the 9-square block ahead, firing over intervening heads.",
+    note: "Attacks any single enemy in the 9-square block up to three ranks ahead, firing over intervening heads.",
   },
   heavy: {
     name: "Heavy Infantry", perPlayer: 2, perBase: 2, dicePerFig: 2,
@@ -2803,7 +2809,7 @@ function toggleHelp() {
 function startGame(seed, opts) {
   UI.rects = null;                      /* no FLIP continuity across games */
   UI.entering = true; UI.lastSel = null; UI.lastActions = null; UI.lastTurnKey = null;
-  UI.aim = null; UI.preAttack = null;
+  UI.aim = null; UI.preAttack = null; UI.openingShown = null; UI.openingIdx = null;
   for (const g of document.querySelectorAll(".ghost")) g.remove();
   newGame(seed == null ? Math.floor(Math.random() * 1e9) : seed, opts);
   Object.assign(G.cfg, opts || {});
@@ -3243,7 +3249,7 @@ const OPENINGS = [
     back: MISSILE_HORSE, backCols: CENTRE_OUT, frontCols: CENTRE_OUT, kingCol: 4 },
 
   { key: "screen", grade: 3, name: "Archer screen",
-    note: "Every bow directly behind a body, shooting over its own front rank.",
+    note: "Every bow directly behind a body, shooting over its own front rank — but the block reaches only three ranks, so walk them up with the line or they will never fire.",
     back: ["archer"], backCols: CENTRE_OUT, frontCols: CENTRE_OUT, kingCol: 4 },
 
   { key: "refusedLeft", grade: 2, name: "Refused left",
@@ -4200,6 +4206,7 @@ function deployPlace(unit, c, r) {
     unit.c = c; unit.r = r;
     log(`${defOf(unit).name} takes ${squareName(c, r)}.`);
   }
+  UI.openingShown = null;          /* no longer the shape the library laid */
   sfx("move");
   return true;
 }
@@ -4225,8 +4232,10 @@ function deployAuto() {
     if (u) { u.c = p.c; u.r = p.r; u._pl = true; }
   });
   for (const u of mine) delete u._pl;
-  G.openingShown = op.key;
-  log(`The line re-forms: ${op.name}.`);
+  /* Named in the battle-plan bar, where it replaces itself. It used to log a
+     line a press, and browsing the library -- which is the whole point of the
+     button -- buried the field report under ten "The line re-forms". */
+  UI.openingShown = op.key;
   updateAll();
 }
 
@@ -4259,11 +4268,14 @@ function renderDeployBar() {
   if (G.phase !== "deploy") { el.hidden = true; return; }
   el.hidden = false;
   const side = G.deploySide;
+  const opening = UI.openingShown ? openingByKey(UI.openingShown) : null;
   el.innerHTML = `<span class="box-label">Battle Plan</span>
     <p class="dep-who"><span class="side s${side}">${esc(G.players[side].name)}</span>
       &mdash; place your line on the near two ranks.
       ${G.cfg.anchorKing ? "The King holds the royal emblem." : "The King goes where you like."}
       <span class="dim">Their plan is behind the screen until both are laid.</span></p>
+    ${opening ? `<p class="dep-opening"><span class="box-label-ish">${esc(opening.name)}</span>
+      <span class="dim">${esc(opening.note)}</span></p>` : ""}
     <p class="dim">Pick a base, then a square to move it, or another base to swap them.
       The two curved arrows in a selected base's front corners turn it.</p>
     <div class="muster-actions">
