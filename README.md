@@ -132,7 +132,7 @@ rider threatens from the opening position.
 ## Also plays by keyboard
 
 Everything is done with the mouse: click a base, then a square to
-move it or a ring to attack; the two curved arrows above a selected base turn it. These
+move it or a ring to attack; the two curved arrows at the top of a selected base turn it. These
 shortcuts mirror that for anyone who prefers them.
 
 

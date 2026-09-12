@@ -417,35 +417,44 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
    empty direction -- flanking it would land on its neighbours.
    ============================================================ */
 .rot {
-  /* Fully clear of the base. Sitting on its top corners covered the very
-     corners that show a north-facing unit's facing. */
-  position: absolute; top: calc(var(--sq) * -0.66);
-  width: calc(var(--sq) * 0.56); height: calc(var(--sq) * 0.56);
-  min-width: 20px; min-height: 20px;
+  /* Tucked into the base's own top corners rather than floating above it.
+     Bare strokes sitting clear of the unit landed on whatever occupied the
+     rank behind, and an opaque box was what used to hide that. A north-facing
+     base has those corners shaved away, so the handles drop into empty
+     notches; on other facings they sit on a thin stroke and a 13% fill, which
+     amber reads over comfortably. */
+  /* The box is larger than the arrow: the extra is transparent padding, so
+     the mark stays a small gesture while the target stays easy to hit. */
+  position: absolute; top: calc(var(--sq) * -0.10);
+  width: calc(var(--sq) * 0.60); height: calc(var(--sq) * 0.60);
+  min-width: 24px; min-height: 24px;
   display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border); background: var(--bg);
+  border: 0; background: none;
   color: var(--amber); cursor: pointer; z-index: 12;
+  /* A dark halo so the bare stroke stays legible over any square. */
+  filter: drop-shadow(0 0 2px var(--bg)) drop-shadow(0 0 1px var(--bg));
   animation: rotIn 200ms var(--ease-out-expo) backwards;
 }
-.rot-left  { left: calc(var(--sq) * -0.34); }
-.rot-right { right: calc(var(--sq) * -0.34); }
+.rot-left  { left: calc(var(--sq) * -0.13); }
+.rot-right { right: calc(var(--sq) * -0.13); }
 .rot-right { animation-delay: 50ms; }
-.rot svg { width: 78%; height: 78%; }
-.rot .arc  { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.rot svg { width: 72%; height: 72%; overflow: visible; }
+.rot .arc  { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 .rot .head { fill: currentColor; stroke: none; }
-.rot:hover, .rot:focus-visible { border-color: var(--amber); background: var(--panel-2); }
-.rot:active { color: var(--white); }
+.rot:hover, .rot:focus-visible { color: var(--white); }
+.rot:active { color: var(--green); }
 @keyframes rotIn { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: none; } }
 
 /* Touch needs a real target, and a phone board is only 32px a square. */
 @media (pointer: coarse) {
-  .rot { width: 40px; height: 40px; top: -48px; }
-  .rot-left  { left: -8px; }
-  .rot-right { right: -8px; }
+  /* Transparent, but the tap target stays a full 44px. */
+  .rot { width: 44px; height: 44px; top: -8px; }
+  .rot-left  { left: -12px; }
+  .rot-right { right: -12px; }
 }
 
 /* The board needs headroom so handles on the back rank are not clipped. */
-#board-wrap { padding-top: calc(var(--sq) * 0.76); }
+#board-wrap { padding-top: calc(var(--sq) * 0.16); }
 
 /* ============================================================
    COMBAT CUT-IN
@@ -1636,16 +1645,17 @@ const UNIT_GLYPH = {
 };
 const GLYPH_STROKE = { archer: true, peasant: true, heavy: true };
 
-/* Two curved arrows, drawn rather than typed: no font is loaded, so a glyph
-   like U+21BA cannot be relied on to exist. Each is a three-quarter arc with
-   a solid head showing which way it sweeps. */
+/* A short arc with a solid head -- a gesture, not an icon. Drawn rather than
+   typed because no font is loaded and a glyph like U+21BA cannot be relied on
+   to exist. Roughly a quarter turn of arc, which is exactly what the button
+   does. */
 const ROT_ARC = {
-  left:  "M17.5 7.2A7.5 7.5 0 1 0 19 12",
-  right: "M6.5 7.2A7.5 7.5 0 1 1 5 12",
+  left:  "M18.5 15.5A8 8 0 0 0 7.5 7.2",
+  right: "M5.5 15.5A8 8 0 0 1 16.5 7.2",
 };
 const ROT_HEAD = {
-  left:  "M17.9 2.6l-4.6 4.1 5.6 2.2z",
-  right: "M6.1 2.6l4.6 4.1-5.6 2.2z",
+  left:  "M3.6 6.2l8.2-1.4-4.7 6.9z",
+  right: "M20.4 6.2l-8.2-1.4 4.7 6.9z",
 };
 
 /* Facing is carried by the outline of the base itself: the two corners at the
@@ -3232,8 +3242,8 @@ function renderHelp() {
 
     <h3>Playing with the mouse</h3>
     <p>Click one of your bases to select it. Its legal moves ring in green and anything it can
-       attack rings in red &mdash; click a ring to act. The two curved arrows above a selected
-       base turn it a quarter turn each way, and turning costs an action like anything else.
+       attack rings in red &mdash; click a ring to act. The two curved arrows at the top of a
+       selected base turn it a quarter turn each way, and turning costs an action like the rest.
        Everything below is a shortcut for something you can click.</p>
 
     <h3>Keys</h3>
@@ -3326,7 +3336,7 @@ const SHOTS = {
     newGame(7, { setup: "basic" });
     UI.houseRules = defaultHouseRules();
     UI.musterOpen = true; UI.musterSide = 0; UI.muster = basicSpec();
-    UI.muster.infantry = { bases: 3, figs: 4 };
+    UI.muster.infantry = { bases: 2, figs: 4 };
     UI.muster.heavy = { bases: 2, figs: 1 };
     UI.muster.peasant = { bases: 1, figs: 4 };
   },
@@ -3554,7 +3564,7 @@ function renderDeployBar() {
     <p class="dep-who"><span class="side s${side}">${esc(G.players[side].name)}</span>
       &mdash; place your line on the near two ranks. The King holds the centre of the back row.</p>
     <p class="dim">Pick a base, then a square to move it, or another base to swap them.
-      The two arrows above a selected base turn it.</p>
+      The two curved arrows at the top of a selected base turn it.</p>
     <div class="muster-actions">
       <button class="btn" data-act="deployAuto">Re-form the line</button>
       <button class="btn" data-act="deployReady">Take the field</button>
