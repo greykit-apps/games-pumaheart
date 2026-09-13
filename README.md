@@ -12,9 +12,9 @@ costs and no rebalancing, because the game has none of those things.
 
 **<https://greykit.com/games/pumaheart/>**
 
-One HTML file. No build step, no dependencies, nothing fetched at play time — load it once and
-it works offline. Plays against an AI or two players on one screen, by mouse or entirely by
-keyboard.
+A single page that fetches nothing while you play, so once it has loaded it works offline and a
+game in progress outlives the tab. Play against an AI or against someone else on the same
+screen, by mouse or entirely by keyboard.
 
 ## How It Works
 
@@ -138,11 +138,11 @@ they are printed rules we offer a house rule against, and they are marked as suc
    re-roll** is the house rule that extends it, on the grounds that one die can otherwise never
    score the two hits armour needs.
 
-Plus two things that are not rules at all. Headless simulations run under a **60-round limit**
-so they terminate. And a real game is called a **stalemate at 200 rounds** — a backstop, not a
-rule: the AI could reach positions it judged not worth leaving, and with nothing to end the game
-it would stand there for ever. Measured over 120 games in the worst realistic case the longest
-that finished ran 80 rounds, so 200 can only be met by a game that has genuinely stopped.
+Plus one thing that is not a rule at all. A game is called a **stalemate at 200 rounds** — a
+backstop, not a rule: the AI could reach a position it judged not worth leaving, and with
+nothing to end the game it would stand there for ever. Measured over 120 games in the worst
+realistic case the longest that finished ran 80 rounds, so 200 can only be met by a game that
+has genuinely stopped.
 
 ## The Board Is 9×8, Not 9×10
 
@@ -160,11 +160,13 @@ column, which is possible only if the column count is odd.
 It matters. Four empty ranks separate the armies, so contact arrives almost immediately and a
 rider threatens from the opening position.
 
-## Also plays by keyboard
+## Mouse First, Keyboard Too
 
-Everything is done with the mouse: click a base, then a square to
-move it or a ring to attack; the two curved arrows in its front corners turn it. These
-shortcuts mirror that for anyone who prefers them.
+Everything is done with the mouse. Click one of your bases and its legal moves ring in green
+and anything it can attack rings in red — click a ring to act. Or just **drag the base** where
+you want it and let go, which is the same two decisions with the button held down. The two
+curved arrows in a selected base's front corners turn it a quarter turn each way. These
+shortcuts mirror all of that, for anyone who prefers them.
 
 
 | Key | |
@@ -177,29 +179,7 @@ shortcuts mirror that for anyone who prefers them.
 | N / P | next / previous unit with a legal action |
 | Z | undo (an attack seals everything before it) |
 | . | end turn |
-| ? | help · M mute · Escape dismiss |
-
-## Tech
-
-One HTML file, vanilla JavaScript, no dependencies and no build. Art is drawn as SVG paths and
-sound is synthesised with Web Audio, so nothing is fetched at runtime. State lives in
-`localStorage` under `pumaheart_save_v1`; the RNG seed is stored inside the save, so a game
-replays exactly.
-
-The rules engine is pure and DOM-free, which is what lets the same code drive the human, the AI
-and the headless simulations. Open the console:
-
-```js
-__PH.ruleTests()          // 44 hand-built positions, including every blocked-retreat case
-__PH.runSim(300)          // headless games, invariants asserted on every step
-__PH.runMatch(0, 2, 100)  // Squire versus Marshal
-```
-
-The AI reads exact probabilities from a pre-computed dice distribution rather than rolling, so
-it never touches the shared RNG stream — asserted, not assumed.
-
-Screenshots regenerate from fixed seeds: `#shot=basic`, `muster`, `deploy`, `combat`, `archer`,
-`panic`, `midgame`, `gameover`.
+| ? / H | help · M mute · Escape dismiss |
 
 ## Other Puma Games
 
