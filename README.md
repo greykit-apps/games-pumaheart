@@ -33,7 +33,8 @@ the two may be split between different units, but no unit attacks twice in a tur
 Infantry pays two actions to move or turn, and one to attack.
 
 **The dice are three battle-axes, two arrows and one PANIC.** Most units hit on axes; Archers
-hit on arrows; Peasants score with whichever they rolled the most of. Knights, Kings and Heavy
+hit on arrows; Peasants score with whichever they rolled the most of — and if that is PANIC,
+they panic and do not hit. Knights, Kings and Heavy
 Infantry must take two hits in the *same* attack to lose a figure. Every attack is thrown in
 full view: the dice tumble and settle one at a time, and the outcome is withheld until the last
 one stops, and the board keeps the defeated base until the card has cleared, so you watch it go
@@ -139,6 +140,15 @@ they are printed rules we offer a house rule against, and they are marked as suc
    did it wins. A King killed outright always beats a King left alone.
 8. **Whether a bribed Mercenary may act the turn it changes sides.** p.7 says only *"The
    Mercenary unit is now on your side!"* We let it: it has not attacked for its new owner yet.
+9. **How Peasants count PANIC.** p.6 says to count whichever they rolled the most of —
+   *"Battle-axes or Arrows (or PANICs)"*. Read literally: when PANIC is the face they rolled
+   most of, they panic and do not hit. A tie goes to the hits, since the printed example has
+   the player choosing. Every PANIC still costs a retreat.
+10. **What a bribe is.** p.7 makes bribing the King's next action against a Mercenary he
+    faces. We read it as the King's attack, not a free action: it costs one action, it is
+    the King's one attack for the turn, and it always works, so a King never rolls dice
+    against a Mercenary he can bribe. A Mercenary its own King is watching cannot be bribed,
+    and is attacked normally instead.
 
 Plus one thing that is not a rule at all. A game is called a **stalemate at 200 rounds** — a
 backstop, not a rule: the AI could reach a position it judged not worth leaving, and with
