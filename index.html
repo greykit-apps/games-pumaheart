@@ -938,7 +938,7 @@ const UNIT_DEFS = {
   peasant: {
     name: "Peasant", perPlayer: 4, perBase: 4, dicePerFig: 1,
     hitFace: null, htk: 1, mounted: false, panics: true, panicPerDie: true,
-    note: "Hits with whichever it rolled most of. Retreats 1 square per PANIC rolled.",
+    note: "Hits with whichever it rolled most of, axes or arrows — but if that is PANIC, it does not hit at all. Retreats 1 square per PANIC rolled.",
   },
   mercenary: {
     name: "Mercenary", perPlayer: 2, perBase: 2, dicePerFig: 2,
@@ -1021,11 +1021,27 @@ const DICE_DIST = (function buildDiceDist() {
   return out;
 })();
 
-/* Hits for a roll, by attacker. Peasants use "whichever you rolled
-   the most of -- Battle-axes or Arrows" (p.5). */
-function hitsFrom(def, axes, arrows) {
-  if (def.hitFace === null) return Math.max(axes, arrows);
-  return def.hitFace === AXE ? axes : arrows;
+/* The face a roll scores with, or null when it scores nothing. Every unit
+   but the Peasant has one hit face. Peasants count "whichever you rolled the
+   most of -- Battle-axes or Arrows (or PANICs)" (p.6): when PANIC is the
+   face they rolled most of, they panic and do not hit. A tie goes to the
+   hits -- the printed example has the player choosing which pile to count.
+   Each PANIC still costs a retreat either way; that is panicsFrom()'s job.
+   The dice resolution, the AI's expectation, and the green on the dice in
+   the cut-in and the field report all ask this one function. */
+function scoringFace(def, axes, arrows, panics) {
+  if (def.hitFace !== null) return def.hitFace;
+  const most = Math.max(axes, arrows);
+  if (most === 0 || (panics || 0) > most) return null;
+  return axes >= arrows ? AXE : ARROW;
+}
+function scoringFaceOf(def, faces) {
+  const n = f => faces.filter(x => x === f).length;
+  return scoringFace(def, n(AXE), n(ARROW), n(PANIC));
+}
+function hitsFrom(def, axes, arrows, panics) {
+  const f = scoringFace(def, axes, arrows, panics);
+  return f === AXE ? axes : f === ARROW ? arrows : 0;
 }
 
 /* Total panic iff EVERY die says PANIC (p.5). Peasants instead
@@ -1185,7 +1201,9 @@ function moveSquares(P, grid, u) {
 
 function actionCost(u, kind) {
   const d = defOf(u);
-  if (kind === "attack") return 1;
+  /* A bribe is the King's attack, and costs what an attack costs. It used to
+     fall through to the turn cost, which is 1 for a King only by default. */
+  if (kind === "attack" || kind === "bribe") return 1;
   return (kind === "move" ? d.moveCost : d.turnCost) || 1;
 }
 
@@ -1262,6 +1280,8 @@ function diceFor(u) {
 function dropWorstDie(faces, hitFace) {
   const axes = faces.filter(f => f === AXE).length;
   const arrows = faces.filter(f => f === ARROW).length;
+  /* PANIC is ranked first regardless, so a Peasant's losing pile is still
+     the smaller of axes and arrows. */
   const scores = f => hitFace === null ? (axes >= arrows ? f === AXE : f === ARROW)
                                        : f === hitFace;
   const rank = f => f === PANIC ? 0 : scores(f) ? 2 : 1;
@@ -1350,7 +1370,7 @@ function resolveAttack(P, grid, atk, def) {
     const axes = res.faces.filter(f => f === AXE).length;
     const arrows = res.faces.filter(f => f === ARROW).length;
     const panics = res.faces.filter(f => f === PANIC).length;
-    res.hits = hitsFrom(ad, axes, arrows);
+    res.hits = hitsFrom(ad, axes, arrows, panics);
     res.panicSteps = panicsFrom(ad, panics, n);
     /* Mercenaries never panic; instead their victim retreats once per
        PANIC they rolled, unless it is an enemy King or Mercenary. */
@@ -2372,10 +2392,10 @@ function attackEntryHTML(e) {
   /* Scoring faces go green exactly as they do in the cut-in, so the summary
      can be traced back to the dice that produced it. A total panic scores
      nothing, whatever the other faces say. */
-  const hitFace = defOf(atk).hitFace;
+  /* Only the face that scored: for a Peasant, the pile it counted. */
+  const sf = scoringFaceOf(defOf(atk), e.faces);
   const dice = e.faces.map(f => {
-    const scores = !e.panic &&
-      (hitFace === null ? (f === AXE || f === ARROW) : f === hitFace);
+    const scores = f === sf;
     return `<span class="logdie ${DIE_CLASS[f]}${scores ? " scores" : ""}"
       role="img" aria-label="${DIE_NAME[f]}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>`;
@@ -2524,7 +2544,7 @@ function attackSentence(res) {
   const parts = [`${G.players[atk.side].name} ${defOf(atk).name} attacks`,
                  `${G.players[def.side].name} ${defOf(def).name}`,
                  `\u2014 ${res.faces.map(f => DIE_NAME[f]).join(", ")}`];
-  if (res.panicSteps && !defOf(atk).panicPerDie) parts.push("\u2014 PANIC!");
+  if (res.panicSteps && (!defOf(atk).panicPerDie || !res.hits)) parts.push("\u2014 PANIC!");
   else if (res.removed) parts.push(`\u2014 ${figuresLost(res)} lost`);
   else parts.push("\u2014 no effect");
   return parts.join(" ");
@@ -3169,8 +3189,10 @@ function expectedAttack(P, atk, def) {
   const n = diceFor(atk);
   let pPanic = 0, eRemoved = 0, pKill = 0;
   for (const row of DICE_DIST[n]) {
-    if (panicsFrom(ad, row.panics, n)) { pPanic += row.p; continue; }
-    const hits = hitsFrom(ad, row.axes, row.arrows);
+    const panicked = panicsFrom(ad, row.panics, n);
+    if (panicked) pPanic += row.p;
+    if (panicked && !ad.panicPerDie) continue;          /* a total panic scores nothing */
+    const hits = hitsFrom(ad, row.axes, row.arrows, row.panics);
     const removed = Math.min(def.figs, Math.floor(hits / dd.htk));
     eRemoved += row.p * removed;
     if (removed >= def.figs) pKill += row.p;
@@ -4620,6 +4642,8 @@ function combatOutcome(res) {
   const atk = byUid(G, res.atkUid), def = byUid(G, res.defUid);
   const ad = defOf(atk), dd = defOf(def);
   if (res.panicSteps && !ad.panicPerDie) return { text: "PANIC — the unit breaks", tone: "bad" };
+  /* Peasants that rolled more PANICs than anything else: no hits, and they run. */
+  if (res.panicSteps && ad.panicPerDie && !res.hits) return { text: "PANIC — no hits, they run", tone: "bad" };
   if (res.killed) return { text: `${dd.name} base destroyed`, tone: "kill" };
   const lost = figuresLost(res);
   if (lost) return { text: `${lost} ${lost === 1 ? "figure" : "figures"} lost`, tone: "hit" };
@@ -4657,11 +4681,11 @@ function tumbleInto(dice, sf, onAllSettled) {
 
 function combatCardHTML(res) {
   const atk = byUid(G, res.atkUid), def = byUid(G, res.defUid);
-  const hitFace = defOf(atk).hitFace;
+  const sf = scoringFaceOf(defOf(atk), res.faces);
   const out = combatOutcome(res);
 
   const dice = res.faces.map(f => {
-    const scores = (hitFace === null ? (f === AXE || f === ARROW) : f === hitFace) && !res.panicSteps;
+    const scores = f === sf;
     return `<span class="bigdie ${DIE_CLASS[f]}${scores ? " scores" : ""}"
       role="img" aria-label="${DIE_NAME[f]}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>`;
@@ -4887,6 +4911,42 @@ const RULE_TESTS = [
     ]);
     force([AXE, AXE, AXE, ARROW]);
     return attackWith(ar, inf).removed === 1;
+  }],
+
+  ["Peasants whose most-rolled face is PANIC do not hit, and retreat once per PANIC", () => {
+    const [pea, inf] = testPosition([
+      { side: 0, type: "peasant", figs: 3, c: 4, r: 5, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 4, face: S },
+    ]);
+    force([AXE, PANIC, PANIC]);
+    const res = attackWith(pea, inf);
+    return res.hits === 0 && res.removed === 0 && inf.figs === 4 && res.panicSteps === 2;
+  }],
+
+  ["a tie between a Peasant's hits and its PANICs goes to the hits", () => {
+    const [pea, inf] = testPosition([
+      { side: 0, type: "peasant", figs: 2, c: 4, r: 5, face: N },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 4, face: S },
+    ]);
+    force([AXE, PANIC]);
+    const res = attackWith(pea, inf);
+    return res.hits === 1 && res.removed === 1 && res.panicSteps === 1;
+  }],
+
+  ["a bribe is the King's attack: one action, and no attack after it", () => {
+    testPosition([
+      { side: 0, type: "king", figs: 1, c: 4, r: 5, face: N },
+      { side: 1, type: "mercenary", figs: 2, c: 4, r: 4, face: S },
+      { side: 1, type: "infantry", figs: 4, c: 3, r: 5, face: E },
+      { side: 1, type: "king", figs: 1, c: 0, r: 0, face: S },
+    ]);
+    const [k, m] = G.units;
+    const offered = legalActions(G, buildGrid(G), 0).filter(a => a.uid === k.uid && a.defUid === m.uid);
+    applyAction(G, offered[0]);
+    k.face = WEST;                          /* now facing the Infantry */
+    const after = legalActions(G, buildGrid(G), 0).filter(a => a.uid === k.uid && (a.kind === "attack" || a.kind === "bribe"));
+    return offered.length === 1 && offered[0].kind === "bribe" && G.actionsLeft === 1 &&
+           m.side === 0 && after.length === 0;
   }],
 
   ["Peasants hit with whichever symbol they rolled most of", () => {
