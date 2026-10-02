@@ -170,12 +170,17 @@ body {
    the board changes the frame's height. Collapses to one column
    on a phone, where the battle plan lands under the board.
    ============================================================ */
-/* THE STAGE centres the frame in the window, both ways, over the scenery --
-   PumaCity's arrangement. On a large screen the game used to sit at the top
-   with the rest of the window empty below it. */
+/* THE STAGE centres the frame in the window over the scenery -- PumaCity's
+   arrangement. On a large screen the game used to sit at the top with the
+   rest of the window empty below it.
+   Centred horizontally by flex, but vertically by placeFrame(), which sets
+   the top padding from the frame's height WITHOUT the coach line. Flex
+   centring both ways slid the whole frame up and down over the scenery
+   every time a hint arrived, changed length or left; anchored by its top,
+   a hint grows the frame downward and nothing above it moves. */
 .stage {
   position: relative; z-index: 1; min-height: 100dvh;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: flex-start; justify-content: center;
   padding: 24px;
 }
 #app {
@@ -195,6 +200,10 @@ body {
   grid-template-areas: "hud hud" "board side" "touch side";
   align-content: start; justify-content: center;
 }
+/* On a phone End turn and Undo come down out of the HUD to sit under the
+   board, in the thumb's reach -- placeThumbCmds() moves the two nodes. On a
+   wider screen this holder is empty and takes no room. */
+#thumb { grid-area: thumb; display: none; }
 #hud { grid-area: hud; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-width: 0; }
 #hud .brand { color: var(--accent); letter-spacing: 0.22em; text-transform: uppercase; }
 #hud .brand b { color: var(--text); font-weight: 700; }
@@ -303,6 +312,30 @@ body {
     135deg, var(--line) 0 1px, transparent 1px 7px);
   opacity: 0.9;
 }
+/* THE TRAIL. The other side's turn used to land in a single frame -- a base
+   was simply somewhere new, and the only record was a log line naming a
+   square. Where each unit started is left dashed, and where it is now rings
+   in its army's colour, until you take your first action. Declared before
+   the move and target rings so either of those outranks it on the same
+   square. --tr is set per square to the mover's hue. */
+.sq.tr-from::before { outline: 1px dashed color-mix(in srgb, var(--tr) 70%, transparent); outline-offset: -6px; }
+.sq.tr-to::after { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--tr) 75%, transparent); }
+@keyframes trailIn { from { opacity: 0; } to { opacity: 1; } }
+/* Fades in once, after the slide has landed -- not on every re-render. */
+#grid.is-trailing .sq.tr-from::before,
+#grid.is-trailing .sq.tr-to::after { animation: trailIn 420ms var(--ease-out-quart) 200ms backwards; }
+
+/* File letters under the board and rank numbers beside it, in the Field
+   box's own padding, so the squares the field report names can be found.
+   Absolutely placed, so they cost the board no width. */
+#grid { position: relative; }
+.coord {
+  position: absolute; pointer-events: none; color: var(--lit);
+  font-size: 10px; line-height: 1; text-align: center;
+}
+.coord.file { bottom: -12px; width: var(--sq); }
+.coord.rank { left: -12px; width: 10px; height: var(--sq); display: flex; align-items: center; justify-content: center; }
+
 .sq.mv::after { box-shadow: inset 0 0 0 2px var(--mv); }
 /* The square under the hand during a drag. */
 #grid.is-dragging { cursor: grabbing; }
@@ -373,8 +406,11 @@ body {
 /* Long dashes: short ones chop up the diagonals, which are the part of the
    outline actually carrying the facing. */
 .u.s1 .base path { stroke-dasharray: 9 4; }
-.u.is-sel .base path { stroke: var(--sel); stroke-width: 3; }
-.u.is-sel { filter: drop-shadow(0 0 4px var(--sel)); }
+/* The halo goes on the plate alone. On the whole unit it bled white into the
+   glyph and the pips, and the selected base was the one you could no longer
+   read -- you lost WHAT you had picked at the moment you picked it. */
+.u.is-sel .base path { stroke: var(--sel); stroke-width: 3; fill-opacity: 0.24; }
+.u.is-sel .base { filter: drop-shadow(0 0 3px rgba(219, 228, 251, 0.55)); }
 
 .u svg:not(.base) { width: 52%; height: 52%; margin-bottom: 26%; position: relative; }
 /* evenodd, so a glyph can knock a detail out of itself -- the knight's eye. */
@@ -477,7 +513,11 @@ table.ref th, table.ref td { text-align: left; padding: 3px 8px; border-bottom: 
 table.ref thead th { color: var(--steel); font-weight: normal; font-size: 11px;
   letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
 table.ref tbody th { font-weight: normal; white-space: nowrap; }
-table.ref td.note { color: var(--dim); font-size: 12px; min-width: 220px; }
+/* Each warrior's note runs the full width on its own line under the numbers.
+   As an eighth column it was pushed off the card's right edge behind a
+   horizontal scroll -- and it is the column that says what the unit DOES. */
+table.ref tr.has-note th, table.ref tr.has-note td { border-bottom: 0; padding-bottom: 0; }
+table.ref td.note { color: var(--dim); font-size: 12px; padding-top: 2px; padding-bottom: 6px; }
 table.ref.keys { max-width: 460px; }
 
 /* Tumbling: dim and restless, so a settled die reads as decided. Both
@@ -515,8 +555,10 @@ table.muster th, table.muster td { text-align: left; padding: 3px 6px; border-bo
 table.muster thead th { color: var(--steel); font-weight: normal; font-size: 11px;
   letter-spacing: 0.1em; text-transform: uppercase; }
 table.muster tbody th { font-weight: normal; }
-table.muster .cap { color: var(--dim); font-size: 11px; }
-table.muster .pool { color: var(--dim); text-align: right; }
+/* The cap is a footnote to the name, not part of it. */
+table.muster .cap { display: block; color: var(--dim); font-size: 11px; line-height: 1.2; }
+.muster-lede { margin: 6px 0 2px; }
+table.muster .pool { color: var(--dim); text-align: right; white-space: nowrap; }
 table.muster tr.bad .pool, table.muster tr.bad th { color: var(--danger); }
 table.muster tr.locked { color: var(--dim); }
 td.step { white-space: nowrap; }
@@ -540,17 +582,25 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 .hud-new { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
 /* flex:none, or a narrow window shrinks the long ones below their text and
    clips them instead of wrapping the row. */
-.hud-new .cmd { flex: none; white-space: nowrap; color: var(--dim); cursor: pointer; padding: 2px 6px; border: 1px solid var(--line); }
-.hud-new .cmd:hover { color: var(--text); border-color: var(--lit); }
-.hud-new .cmd.is-primary { color: var(--accent); border-color: var(--accent-dim); }
-.hud-new .cmd.is-primary:hover { color: var(--bg); background: var(--accent); border-color: var(--accent); }
-.hud-new .cmd.is-toggle { border-style: dashed; }
-.hud-new .cmd.is-quiet { border-color: transparent; }
-.hud-new .cmd.is-quiet:hover { border-color: var(--line); }
+.cmd { flex: none; white-space: nowrap; color: var(--dim); cursor: pointer; padding: 2px 6px; border: 1px solid var(--line); }
+.cmd:hover { color: var(--text); border-color: var(--lit); }
+.cmd.is-primary { color: var(--accent); border-color: var(--accent-dim); }
+.cmd.is-primary:hover { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+.cmd.is-toggle { border-style: dashed; }
+.cmd.is-quiet { border-color: transparent; }
+.cmd.is-quiet:hover { border-color: var(--line); }
+/* Armed: the first click on End turn with an action still unspent asks for a
+   second, and the pips it would throw away blink. See passTurn(). */
+/* Wide enough for either label, so arming it does not re-flow the HUD. */
+#hud-end { min-width: calc(11ch + 14px); text-align: center; }
+.cmd.is-primary.is-armed,
+.cmd.is-primary.is-armed:hover { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+@keyframes actsBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.acts.is-armed { animation: actsBlink 700ms var(--ease-out-quart) infinite; }
 /* A command that cannot act says so, instead of swallowing the click. */
-.hud-new .cmd.is-off,
-.hud-new .cmd.is-primary.is-off { opacity: 0.38; cursor: default; color: var(--dim); border-color: var(--line); }
-.hud-new .cmd.is-off:hover { color: var(--dim); border-color: var(--line); background: none; }
+.cmd.is-off,
+.cmd.is-primary.is-off { opacity: 0.38; cursor: default; color: var(--dim); border-color: var(--line); }
+.cmd.is-off:hover { color: var(--dim); border-color: var(--line); background: none; }
 
 
 /* Hot-seat handover curtain */
@@ -593,8 +643,8 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 /* The base plate owns `transform` for its facing, so selection cannot animate
    scale on the same element without fighting the rotation. The glow carries
    it instead. */
-@keyframes ringIn { from { filter: drop-shadow(0 0 0 var(--sel)); } to { filter: drop-shadow(0 0 5px var(--sel)); } }
-.u.is-sel { animation: ringIn 220ms var(--ease-out-expo); }
+@keyframes ringIn { from { filter: drop-shadow(0 0 0 rgba(219, 228, 251, 0)); } to { filter: drop-shadow(0 0 3px rgba(219, 228, 251, 0.55)); } }
+.u.is-sel .base { animation: ringIn 220ms var(--ease-out-expo); }
 
 /* ============================================================
    OVERLAYS — backdrop fades, card rises. Exit is not animated:
@@ -643,9 +693,12 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
      cyan reads over comfortably. */
   /* The box is larger than the arrow: the extra is transparent padding, so
      the mark stays a small gesture while the target stays easy to hit. */
+  /* 0.38sq of target round a mark drawn at 72% of it -- the same 0.27sq
+     arrow as before, in a box a quarter wider. At 0.30 the target was 19px
+     on a laptop board, which is a squint, not a click. */
   position: absolute; top: 0;
-  width: calc(var(--sq) * 0.30); height: calc(var(--sq) * 0.30);
-  min-width: 17px; min-height: 17px;
+  width: calc(var(--sq) * 0.38); height: calc(var(--sq) * 0.38);
+  min-width: 22px; min-height: 22px;
   display: flex; align-items: center; justify-content: center;
   border: 0; background: none;
   color: var(--accent); cursor: pointer; z-index: 12;
@@ -656,7 +709,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 .rot-left  { left: 0; }
 .rot-right { right: 0; }
 .rot-right { animation-delay: 50ms; }
-.rot svg { width: 90%; height: 90%; overflow: visible; }
+.rot svg { width: 72%; height: 72%; overflow: visible; }
 .rot .arc  { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 .rot .head { fill: currentColor; stroke: none; }
 .rot:hover, .rot:focus-visible { color: var(--text); }
@@ -714,6 +767,21 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 .bigdie.f-panic { color: var(--danger); border-color: var(--danger-dim); }
 .bigdie.rolling { color: var(--dim); border-color: var(--line); animation: rollShake 150ms linear infinite; }
 .bigdie.settled { animation: dieLand 300ms var(--ease-out-expo); }
+
+/* Each die names its face. The player has never seen the box, and the rules
+   hang on which face came up -- Archers score arrows, Peasants count piles,
+   all PANIC is a rout -- so a glyph alone asked them to learn an alphabet
+   mid-fight. The caption is withheld while the die is in the air, exactly
+   as its colour is. */
+.die { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.die-cap {
+  font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim);
+  transition: opacity 160ms var(--ease-out-quart);
+}
+.die:has(.bigdie.rolling) .die-cap { opacity: 0; }
+.die:has(.bigdie.scores) .die-cap { color: var(--good); }
+.die:has(.bigdie.f-panic) .die-cap { color: var(--danger); }
+.die:has(.bigdie.discarded) .die-cap { opacity: 0.4; }
 
 .combat-out {
   margin: 16px 0 2px; letter-spacing: 0.12em; text-transform: uppercase;
@@ -778,32 +846,48 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 }
 
 @media (pointer: coarse) {
-  .btn, .hud-new .cmd { min-height: 44px; display: inline-flex; align-items: center; }
+  .btn, .cmd { min-height: 44px; display: inline-flex; align-items: center; }
 }
 
 @media (max-width: 760px) {
   /* One column, so the rail no longer takes a share of the width. */
   :root { --sq: clamp(30px, min(9.6vw, 8vh), 58px); }
-  /* The command row gets the full width to wrap in. Left as a flex item
-     beside the brand it was handed the leftovers and overflowed instead. */
-  #hud { display: block; }
-  /* A grid rather than a wrapping flex row: six commands land as two rows of
-     three at a width the labels cannot overflow, instead of flexbox deciding
-     "Speed: Measured" fits when it does not. */
+  /* Brand and whose turn it is share the first line; the settings take the
+     full width of the second. End turn and Undo are not up here at all --
+     placeThumbCmds() moves them under the board. Six boxed commands in two
+     rows of three stood taller over the board than half of the board, and
+     the one a turn needs most sat in the corner a thumb cannot reach. */
+  #hud { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+  /* A grid rather than a wrapping flex row, so "Speed: Measured" wraps
+     inside its own cell instead of flexbox deciding it fits when it does
+     not. */
   .hud-new {
-    display: grid; width: 100%; margin-top: 8px;
-    grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+    display: grid; flex: 1 1 100%; margin-top: 6px;
+    grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
   }
   .hud-new .cmd {
     white-space: normal; text-align: center; justify-content: center;
-    padding: 6px 4px;
+    padding: 4px; font-size: 12px; line-height: 1.2;
   }
+  #thumb {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px;
+    margin-top: 12px;
+  }
+  #thumb .cmd {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 44px; padding: 6px;
+  }
+  #thumb:empty { display: none; }
+  /* Four columns of steppers and counts in a 340px card: the padding goes
+     before the numbers do. */
+  .muster-card { min-width: 0; }
+  table.muster th, table.muster td { padding: 3px 2px; }
   .scene { display: none; }
   .stage { display: block; padding: 0; }
   #app { border: 0; }
   #app {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "hud" "board" "touch" "side";
+    grid-template-areas: "hud" "board" "touch" "thumb" "side";
     justify-content: stretch;
   }
   /* What just happened outranks what is selected: after an AI attack the
@@ -862,6 +946,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   </aside>
 
   <nav id="touchbar" hidden aria-label="Turn the selected unit"></nav>
+  <div id="thumb"></div>
   <div id="over" hidden></div>
 
 </div>
@@ -922,7 +1007,7 @@ const UNIT_DEFS = {
   infantry: {
     name: "Infantry", perPlayer: 20, perBase: 4, dicePerFig: 1,
     hitFace: AXE, htk: 1, mounted: false, panics: true,
-    note: "",
+    note: "Moves one square forward. Attacks the square it faces.",
   },
   archer: {
     name: "Archer", perPlayer: 8, perBase: 4, dicePerFig: 1,
@@ -1853,7 +1938,7 @@ function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
 function resumeGame(saved) {
   if (!saved.units || !saved.players || !saved.phase) throw new Error("save is not a position");
   G = saved;
-  UI.entering = false; UI.sel = null; UI.undo = []; UI.rects = null;
+  UI.entering = false; UI.sel = null; UI.undo = []; UI.rects = null; UI.trails = null;
   UI.cur = idx(4, H - 1);
   /* Once, however often the tab is reloaded. */
   if (G.log[G.log.length - 1] !== "Battle resumed.") log("Battle resumed.");
@@ -1869,6 +1954,8 @@ function resumeGame(saved) {
    headless sims all fall out of the single isHuman() branch.
    ============================================================ */
 const WAIT = "wait", ANIM = "anim", NEXT = "next";
+/* Long enough to see one base land before the next sets off. */
+const BOT_BEAT_MS = 420;
 
 function go(phase, step) { G.phase = phase; G.step = step; }
 function isHuman(side) { return !G.players[side].isBot && !UI.autoHuman; }
@@ -1910,6 +1997,7 @@ const STEP = {
   play: {
     begin() {
       for (const u of G.units) if (u.side === G.turn) u.attackedThisTurn = false;
+      if (!UI.headless) resetTrail(G.turn);
       G.actionsLeft = 2;
       const v = checkVictory(G);
       if (v) { G.result = v; G.gameOver = true; go("gameover", "done"); return NEXT; }
@@ -1937,7 +2025,14 @@ const STEP = {
       const grid = buildGrid(G);
       const still = legalActions(G, grid, G.turn).some(x => sameAction(x, a));
       if (!still) { go("play", "act"); return NEXT; }
-      return doAction(a);
+      const r = doAction(a);
+      /* A beat after each of the machine's moves and turns. Without one its
+         whole turn landed in a single render: two bases slid at once, and a
+         unit that moved twice simply arrived. Attacks have their own beat. */
+      if (r === NEXT && a.kind !== "attack" && G.phase === "play") {
+        return animate([{ type: "render" }, { type: "wait", delay: BOT_BEAT_MS }]);
+      }
+      return r;
     },
 
     /* Entered by doAction for an attack. The state is already final here:
@@ -2005,6 +2100,7 @@ function doAction(a) {
      were thrown, so it keeps a copy of that board to render from. */
   if (a.kind === "attack" && !UI.headless && !UI.reducedMotion) UI.preAttack = clone(G);
 
+  noteTrail(a, actor);
   applyAction(G, a);
   const v = checkVictory(G);
   if (v) { G.result = v; G.gameOver = true; }
@@ -2173,6 +2269,28 @@ function rotateHandles(u) {
     style="transform:rotate(${baseAngle(u)}deg)">${arms}</span>`;
 }
 
+/* THE TRAIL is presentation only, so it lives in UI and never in G. Each
+   side's record is wiped as its turn begins and filled as it acts; the
+   board shows the OTHER side's record until the side to move spends an
+   action. Undo puts the actions back, and with them the trail. */
+function resetTrail(side) {
+  if (!UI.trails) UI.trails = {};
+  UI.trailSeq = (UI.trailSeq || 0) + 1;
+  UI.trails[side] = { side, units: {}, seq: UI.trailSeq };
+}
+function noteTrail(a, actor) {
+  if (UI.headless) return;
+  if (!UI.trails || !UI.trails[actor.side]) resetTrail(actor.side);
+  const units = UI.trails[actor.side].units;
+  /* The first place the unit was seen this turn is where it started. */
+  if (!(actor.uid in units)) units[actor.uid] = { c: actor.c, r: actor.r };
+}
+function shownTrail() {
+  if (!UI.trails || !G || G.phase !== "play" || G.gameOver || G.actionsLeft < 2) return null;
+  const t = UI.trails[1 - G.turn];
+  return t && Object.keys(t.units).length ? t : null;
+}
+
 function renderBoard() {
   const grid = buildGrid(G);
   const sel = UI.sel ? byUid(G, UI.sel) : null;
@@ -2195,6 +2313,19 @@ function renderBoard() {
      UI anyway: while deploying you place a base in your own two ranks, you
      do not ride it anywhere. */
   const screened = G.phase === "deploy";
+  /* The other side's last turn, until you act -- see noteTrail(). Keyed by
+     square: where each unit started, and where it stands now. */
+  const trailFrom = new Map(), trailTo = new Map();
+  const trail = shownTrail();
+  if (trail) {
+    const hue = trail.side === 0 ? "var(--army-green)" : "var(--army-gold)";
+    for (const [uid, from] of Object.entries(trail.units)) {
+      const u = byUid(G, +uid);
+      if (!u || !u.alive) continue;
+      if (from && (from.c !== u.c || from.r !== u.r)) trailFrom.set(idx(from.c, from.r), hue);
+      trailTo.set(idx(u.c, u.r), hue);
+    }
+  }
   if (lead && !screened) {
     if (lead === sel) for (const m of moveSquares(G, grid, lead)) moves.add(idx(m.c, m.r));
     for (const t of attackTargets(G, grid, lead)) targets.add(idx(t.c, t.r));
@@ -2220,6 +2351,9 @@ function renderBoard() {
         cls.push("aim-atk", "aim-s" + aimAtk.side);
       }
       if (aimDef && aimDef.alive && aimDef.c === c && aimDef.r === r) cls.push("aim-def");
+      const tr = trailTo.get(k) || trailFrom.get(k);
+      if (trailFrom.has(k)) cls.push("tr-from");
+      if (trailTo.has(k)) cls.push("tr-to");
       /* The screen covers the whole of their zone, not the squares that
          happen to be occupied: hatching only the filled ones would let you
          count ten bases and read the shape off the gaps, which is most of
@@ -2236,8 +2370,14 @@ function renderBoard() {
          a unit gets explained. */
       const d = lead ? Math.max(Math.abs(c - lead.c), Math.abs(r - lead.r)) : 0;
       html += `<div class="${cls.join(" ")}" role="gridcell" data-c="${c}" data-r="${r}"
-        style="--d:${d}" tabindex="${UI.cur === k ? 0 : -1}" aria-label="${label}">${u && !hidden ? renderUnit(u) : ""}</div>`;
+        style="--d:${d}${tr ? `;--tr:${tr}` : ""}" tabindex="${UI.cur === k ? 0 : -1}" aria-label="${label}">${u && !hidden ? renderUnit(u) : ""}</div>`;
     }
+  }
+  for (let c = 0; c < W; c++) {
+    html += `<span class="coord file" aria-hidden="true" style="left:calc(${c} * var(--sq))">${"abcdefghi"[c]}</span>`;
+  }
+  for (let r = 0; r < H; r++) {
+    html += `<span class="coord rank" aria-hidden="true" style="top:calc(${r} * var(--sq))">${H - r}</span>`;
   }
   const g = document.getElementById("grid");
   g.style.gridTemplateColumns = `repeat(${W}, var(--sq))`;
@@ -2253,6 +2393,10 @@ function renderBoard() {
   if (leadKey !== UI.lastSel) { UI.bloom = true; UI.lastSel = leadKey; }
   g.classList.toggle("is-blooming", !!UI.bloom && !UI.reducedMotion);
   UI.bloom = false;
+  /* The trail fades in once, when it first shows, not on every re-render. */
+  const trailKey = trail ? trail.seq : null;
+  g.classList.toggle("is-trailing", trailKey !== UI.trailShown && trailKey != null && !UI.reducedMotion);
+  UI.trailShown = trailKey;
 
   /* The armies march on once, when a game begins. */
   if (UI.entering && !UI.reducedMotion) {
@@ -2286,6 +2430,18 @@ function syncPrefsChrome() {
 }
 
 function renderHUD() {
+  /* The board behind the muster is a placeholder game, and its status line
+     said "Gold to act" under a card headed "Muster -- Green". */
+  if (UI.musterOpen) {
+    const name = G.players ? G.players[UI.musterSide].name : (UI.musterSide === 0 ? "Green" : "Gold");
+    document.getElementById("hud-state").innerHTML =
+      `<span class="side s${UI.musterSide}">${esc(name)}</span> <span class="rnd">mustering</span>`;
+    document.getElementById("hud-turn").textContent = `${name} is mustering`;
+    syncPrefsChrome();
+    setCmdEnabled("hud-undo", false);
+    setCmdEnabled("hud-end", false);
+    return;
+  }
   if (G.phase === "deploy") {
     const el = document.getElementById("hud-state");
     if (el) el.innerHTML = `<span class="side s${G.deploySide}">${esc(G.players[G.deploySide].name)}</span>
@@ -2299,9 +2455,17 @@ function renderHUD() {
      particular looked live at every moment and swallowed the click. */
   setCmdEnabled("hud-undo", canUndo() && myTurn());
   setCmdEnabled("hud-end", G.phase === "play" && myTurn());
+  const armed = !!UI.endArmed && G.phase === "play" && myTurn();
+  const end = document.getElementById("hud-end");
+  if (end) {
+    end.textContent = armed ? "Confirm end" : "End turn";
+    end.classList.toggle("is-armed", armed);
+    if (armed) end.title = `${G.actionsLeft} unspent ${G.actionsLeft === 1 ? "action" : "actions"} will be lost`;
+    else end.removeAttribute("title");
+  }
   if (G.phase === "deploy") return;
   const p = G.players[G.turn];
-  const pips = `<span class="acts" aria-hidden="true">${
+  const pips = `<span class="acts${armed ? " is-armed" : ""}" aria-hidden="true">${
     "●".repeat(G.actionsLeft)}${"○".repeat(Math.max(0, 2 - G.actionsLeft))}</span>`;
   const who = G.gameOver
     ? (G.result.winner === null ? "Stalemate" : `${esc(G.players[G.result.winner].name)} wins`)
@@ -2397,12 +2561,12 @@ function attackEntryHTML(e) {
   const dice = e.faces.map(f => {
     const scores = f === sf;
     return `<span class="logdie ${DIE_CLASS[f]}${scores ? " scores" : ""}"
-      role="img" aria-label="${DIE_NAME[f]}">
+      role="img" aria-label="${DIE_NAME[f]}" title="${DIE_NAME[f]}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>`;
   }).join("")
   + (e.dropped || []).map(f =>
     `<span class="logdie discarded ${DIE_CLASS[f]}" role="img"
-      aria-label="${DIE_NAME[f]}, discarded">
+      aria-label="${DIE_NAME[f]}, discarded" title="${DIE_NAME[f]}, set aside">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>`).join("");
 
   /* Red is the token for harm and nothing else, so it marks the figures that
@@ -2494,6 +2658,40 @@ function updateAll() {
   renderOver();
   renderLog();
   restoreFocus();
+  placeFrame();
+}
+
+/* THE FRAME HOLDS STILL. The stage pads the frame down to where it would sit
+   centred WITHOUT a coach line, so a hint arriving, changing length or
+   leaving grows or shrinks the frame at its foot and nothing above moves.
+   Flex-centring both ways shifted the HUD, the board and the rail by half
+   the hint's height every time. Re-run whenever #app changes size. */
+const PHONE = window.matchMedia("(max-width: 760px)");
+function placeFrame() {
+  const stage = document.querySelector(".stage");
+  const app = document.getElementById("app");
+  if (!stage || !app) return;
+  if (PHONE.matches) { stage.style.paddingTop = ""; return; }
+  const coach = document.getElementById("coach");
+  const hint = coach && !coach.hidden ? coach.offsetHeight + 12 : 0;   /* + its margin-top */
+  const rest = app.offsetHeight - hint;
+  stage.style.paddingTop = Math.max(24, Math.floor((window.innerHeight - rest) / 2)) + "px";
+}
+
+/* On a phone End turn and Undo leave the HUD for a row under the board,
+   where a thumb reaches; anywhere wider they go back where they were. The
+   nodes move rather than being copied, so their ids, listeners and state
+   go with them. Undo first, so End turn lands under the right thumb. */
+function placeThumbCmds() {
+  const thumb = document.getElementById("thumb");
+  const row = document.querySelector("#hud .hud-new");
+  const end = document.getElementById("hud-end"), undo = document.getElementById("hud-undo");
+  if (!thumb || !row || !end || !undo) return;
+  if (PHONE.matches) {
+    if (end.parentNode !== thumb) { thumb.append(undo, end); }
+  } else if (end.parentNode !== row) {
+    row.prepend(end, undo);
+  }
 }
 
 /* updateAll() replaces #grid.innerHTML wholesale, which destroys the focused
@@ -2745,6 +2943,7 @@ function selectUnit(uid) {
    take a move back, never a dice roll. */
 function tryAction(a) {
   if (!myTurn()) return false;
+  disarmEnd();
   const grid = buildGrid(G);
   if (!legalActions(G, grid, G.turn).some(x => sameAction(x, a))) return false;
 
@@ -2912,8 +3111,32 @@ function moveCursor(dc, dr) {
   updateAll();
 }
 
+/* END TURN ASKS TWICE. The turn ends by itself when the last action is
+   spent, so the button only ever does one thing: throw away an action or
+   two, for good -- nothing after it can be undone, and it sat right beside
+   Undo. The first press arms it and blinks the pips it would discard; a
+   second press, a double-click or "." twice, confirms. Anything else, or
+   four seconds, stands it down. */
+const END_ARM_MS = 4000;
+function armEnd() {
+  UI.endArmed = true;
+  clearTimeout(UI.endArmTimer);
+  UI.endArmTimer = setTimeout(disarmEnd, END_ARM_MS);
+  const n = G.actionsLeft;
+  announce(`${n === 1 ? "One action" : "Two actions"} unspent. End turn again to give ${n === 1 ? "it" : "them"} up.`);
+  renderHUD();
+}
+function disarmEnd() {
+  clearTimeout(UI.endArmTimer);
+  if (!UI.endArmed) return;
+  UI.endArmed = false;
+  if (G) renderHUD();
+}
+
 function passTurn() {
   if (!myTurn()) return;
+  if (G.actionsLeft > 0 && !UI.endArmed) { armEnd(); return; }
+  disarmEnd();
   UI.undo = [];
   UI.sel = null;
   log(`${G.players[G.turn].name} stands fast.`);
@@ -3010,6 +3233,7 @@ function setupInput() {
        as a second decision. */
     if (UI.draggedAt && Date.now() - UI.draggedAt < 300) { UI.draggedAt = 0; return; }
     const act = ev.target.closest("[data-act]");
+    if (!act || act.dataset.act !== "endTurn") disarmEnd();
     if (act) { dispatchAct(act.dataset.act, act); return; }
     const cell = ev.target.closest(".sq");
     if (cell) {
@@ -3024,6 +3248,9 @@ function setupInput() {
 
   document.addEventListener("keydown", ev => {
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const onEnd = ev.key === "." ||
+      ((ev.key === "Enter" || ev.key === " ") && document.activeElement && document.activeElement.id === "hud-end");
+    if (!onEnd && !/^(Shift|Tab)$/.test(ev.key)) disarmEnd();
     const inGrid = UI.focusInGrid || !document.activeElement || document.activeElement === document.body;
 
     if (ev.key === "Enter" || ev.key === " ") {
@@ -3055,6 +3282,7 @@ function startGame(seed, opts) {
   UI.rects = null;                      /* no FLIP continuity across games */
   UI.entering = true; UI.lastSel = null; UI.lastTurnKey = null;
   UI.aim = null; UI.preAttack = null; UI.openingShown = null; UI.openingIdx = null;
+  UI.trails = null; UI.trailShown = null;
   for (const g of document.querySelectorAll(".ghost")) g.remove();
   newGame(seed == null ? Math.floor(Math.random() * 1e9) : seed,
     Object.assign({ humanSide: UI.humanSide || 0,
@@ -3133,7 +3361,7 @@ const W_SCREEN = 5;       /* my archer has a friendly directly ahead      */
    matters: the opening is the one decision the search never revisits. */
 const SKILL = [
   { name: "Squire",  beam: 1,  threat: false, kingLane: false, archer: false, noise: "top4", sharp: 0 },
-  { name: "Knight",  beam: 6,  threat: true,  kingLane: true,  archer: true,  noise: "second", sharp: 2 },
+  { name: "Captain", beam: 6,  threat: true,  kingLane: true,  archer: true,  noise: "second", sharp: 2 },
   { name: "Marshal", beam: 14, threat: true,  kingLane: true,  archer: true,  noise: "none", sharp: 5 },
 ];
 
@@ -3435,7 +3663,7 @@ function botChooseTurn(P, side, skillIx) {
 
        Narrowing it to "comparable to the best" was the first attempt and it
        was worse: it made the Squire nearly greedy, and it started beating a
-       Knight. The tie-breaks above are what make this filter work -- an
+       Captain. The tie-breaks above are what make this filter work -- an
        attack or a closing move is above zero even when the evaluator is
        indifferent, and a turn on the spot is below it. */
     const useful = scored.filter(x => x.s > 0);
@@ -3776,13 +4004,21 @@ function renderMuster() {
 
   const why = validateArmy(spec, UI.houseRules);
   const n = specBases(spec);
+  /* "Basic army" beside "Take the field" read as a second army to choose,
+     when it is the one already on the table. It is a reset, and it says so,
+     and it stands down when there is nothing to reset. */
+  const printed = JSON.stringify(spec) === JSON.stringify(basicSpec());
+  /* Hot-seat's first muster leads to the second player's, not to the board. */
+  const handover = UI.pendingOpponent === "hotseat" && !(UI.musterSpecs && UI.musterSpecs[1 - UI.musterSide]);
 
   el.innerHTML = `<div class="box muster-card">
     <span class="box-label">Muster &mdash; <span class="side s${UI.musterSide}">${esc((G && G.players ? G.players[UI.musterSide].name : UI.musterSide === 0 ? "Green" : "Gold"))}</span></span>
-    <p class="dim">Ten bases take the field.
-      Leave it as it stands for the printed army, or muster your own.</p>
+    <p class="muster-lede">You field ten bases. A base is one unit of identical figures, and its
+      figure count is both its strength and the dice it rolls.</p>
+    <p class="dim">Leave it as it stands for the printed army, or muster your own from the
+      figures in the box.</p>
     <table class="muster">
-      <thead><tr><th scope="col">Warrior</th><th scope="col">Bases</th><th scope="col">Per base</th><th scope="col">Figures</th></tr></thead>
+      <thead><tr><th scope="col">Warrior</th><th scope="col">Bases</th><th scope="col">Figures each</th><th scope="col">Of the box</th></tr></thead>
       <tbody>
         <tr class="locked"><th scope="row">King</th><td class="step"><b>1</b></td><td class="step"><b>1</b></td><td class="pool">1 of 1</td></tr>
         ${rows}
@@ -3792,8 +4028,8 @@ function renderMuster() {
        &middot; ${specFigures(spec)} warriors</p>
     <p class="why${why ? "" : " ok"}" role="status">${why ? esc(why) : "Ready."}</p>
     <div class="muster-actions">
-      <button class="btn" data-act="musterPreset">Basic army</button>
-      <button class="btn btn-go" data-act="musterConfirm" ${why ? "disabled" : ""}>Take the field</button>
+      <button class="btn" data-act="musterPreset" ${printed ? "disabled" : ""}>Reset to printed</button>
+      <button class="btn btn-go" data-act="musterConfirm" ${why ? "disabled" : ""}>${handover ? "Done &mdash; hand over" : "Lay the battle plan"}</button>
     </div>
   </div>`;
 }
@@ -3803,11 +4039,16 @@ function renderMuster() {
    no font is loaded and a die face must not depend on one.
    ============================================================ */
 const DIE_GLYPH = {
-  0: "M6 4c4-2 8-1 10 2l-3 3-2-2-5 3zM13 9l-8 9 2 2 9-8z",              /* battle-axe   */
+  /* A double-bitted axe on an upright haft. The old head-on-a-wedge read, at
+     log size, as a letter B; a single blade on a staff read as a P, and as
+     the PANIC banner's twin. Two blades are an axe and nothing else. */
+  0: "M12 3v19M12 6.5Q8.5 5.5 5 3.5Q2.6 8.5 5 13.5Q8.5 11.5 12 10.5M12 6.5Q15.5 5.5 19 3.5Q21.4 8.5 19 13.5Q15.5 11.5 12 10.5", /* battle-axe */
   1: "M3 19L19 5M15 5h4v4M5 21l-2-2M3 5l16 14M5 3h4M3 5v4",             /* crossed arrows */
   2: "M6 3h12l-3 5 3 5-12 1 2-6zM6 3v18",                               /* torn banner  */
 };
 const DIE_NAME = { 0: "battle-axe", 1: "arrows", 2: "PANIC" };
+/* Under each die on the attack card, so the faces teach themselves. */
+const DIE_CAP = { 0: "axe", 1: "arrows", 2: "panic" };
 const DIE_CLASS = { 0: "f-axe", 1: "f-arrow", 2: "f-panic" };
 
 /* ============================================================
@@ -4114,7 +4355,7 @@ function renderHelp() {
   const rows = order.map(t => {
     const d = UNIT_DEFS[t];
     const per = perBaseOf(t);
-    return `<tr>
+    return `<tr${d.note ? ` class="has-note"` : ""}>
       <th scope="row">${esc(d.name)}</th>
       <td>${d.perPlayer}</td>
       <td>${per}</td>
@@ -4122,8 +4363,7 @@ function renderHelp() {
       <td>${d.hitFace === null ? "axe or arrow" : d.hitFace === AXE ? "battle-axe" : "arrows"}</td>
       <td>${d.htk}</td>
       <td>${d.panics ? (d.panicPerDie ? "per die" : "yes") : "never"}</td>
-      <td class="note">${esc(d.note || "—")}</td>
-    </tr>`;
+    </tr>${d.note ? `<tr><td class="note" colspan="7">${esc(d.note)}</td></tr>` : ""}`;
   }).join("");
 
   const keys = RAIL.map(([k, label]) => `<tr><th scope="row"><kbd>${esc(k)}</kbd></th><td>${esc(label)}</td></tr>`).join("")
@@ -4145,7 +4385,8 @@ function renderHelp() {
        attack &mdash; though you may strike its side or rear. Archers are the exception: they hit any
        single enemy in the block of nine squares ahead, firing over intervening heads.</p>
     <p><b>Dice.</b> Three battle-axes, two arrows, one PANIC. Most units hit on axes; Archers hit
-       on arrows. Knights, Kings and Heavy Infantry take two hits in the <i>same</i> attack to lose
+       on arrows; Peasants count whichever they rolled most of, and if that is PANIC they do not
+       hit at all. Knights, Kings and Heavy Infantry take two hits in the <i>same</i> attack to lose
        a figure.</p>
     <p><b>PANIC.</b> If every die comes up PANIC the unit turns about and retreats a square, shoving
        whoever is behind it into panicking too. A retreat blocked by the board edge, an enemy, your
@@ -4165,7 +4406,7 @@ function renderHelp() {
     <div class="scrollx"><table class="ref">
       <thead><tr><th scope="col">Warrior</th><th scope="col">You own</th><th scope="col">Per base</th>
         <th scope="col">Dice each</th><th scope="col">Hits with</th><th scope="col">Hits to kill each</th>
-        <th scope="col">Panics</th><th scope="col">Notes</th></tr></thead>
+        <th scope="col">Panics</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
 
@@ -4185,10 +4426,11 @@ function renderHelp() {
       <i>Lionheart</i> (1997), product 40742-I, which Hasbro still serves at
       <code>hasbro.com/common/instruct/Lionheart.PDF</code>. The board is nine files by eight ranks;
       the widely repeated “9 by 10” traces to a single hedged line in a 1998 magazine review and is
-      wrong. The rules are silent on four points &mdash; what you give up when customising, how a
-      turn-order tie is broken, whether a rider may move zero squares, and whether a lone Peasant
-      gets the two-hit re-roll that a lone Infantryman or Archer gets &mdash; and those readings
-      are ours. Whether a base may be under-filled is <i>not</i> one of them: the rules are clear
+      wrong. The rules are silent or unclear on eight points &mdash; what you give up when
+      customising, how a turn-order tie is broken, whether a rider may move zero squares, whether
+      a lone Peasant gets the two-hit re-roll that a lone Infantryman or Archer gets, who wins when
+      both Kings are left alone at once, whether a bribed Mercenary may act the turn it changes
+      sides, how Peasants count PANIC, and what a bribe costs &mdash; and those readings are ours. Whether a base may be under-filled is <i>not</i> one of them: the rules are clear
       that a base is fielded full, and the house rule that relaxes it says so.</p>
     <div class="muster-actions"><button class="btn" data-act="helpClose">Close</button></div>
   </div>`;
@@ -4211,7 +4453,7 @@ const COACH = [
     when: () => G.phase === "play" && !G.gameOver && UI.sel != null },
   { id: "reach", text: "You must face what you attack, though its side and rear count. Archers are the exception: they shoot over their own line.",
     when: () => G.phase === "play" && !G.gameOver && G.round >= 2 },
-  { id: "panic", text: "Every die came up PANIC: the unit turns and runs, shoving your own line back. Off the board, into an enemy, or into your own King \u2014 it dies.",
+  { id: "panic", text: "Every die came up PANIC: the unit turns and runs, shoving your own line back. Blocked by the board edge, an enemy, your own King or a Mercenary \u2014 it dies.",
     when: () => !!(G.dice && G.dice.panicSteps) },
 ];
 
@@ -4686,17 +4928,19 @@ function combatCardHTML(res) {
 
   const dice = res.faces.map(f => {
     const scores = f === sf;
-    return `<span class="bigdie ${DIE_CLASS[f]}${scores ? " scores" : ""}"
+    return `<span class="die"><span class="bigdie ${DIE_CLASS[f]}${scores ? " scores" : ""}"
       role="img" aria-label="${DIE_NAME[f]}">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>`;
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>
+      <span class="die-cap" aria-hidden="true">${DIE_CAP[f]}</span></span>`;
   }).join("")
   /* A die discarded by the extra-die house rule rolls with the rest and is
      then plainly set aside -- a rule you cannot see happen is one the player
      has to take on trust. */
   + (res.dropped || []).map(f =>
-    `<span class="bigdie discarded ${DIE_CLASS[f]}" role="img"
+    `<span class="die"><span class="bigdie discarded ${DIE_CLASS[f]}" role="img"
       aria-label="${DIE_NAME[f]}, discarded">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>`).join("");
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${DIE_GLYPH[f]}"/></svg></span>
+      <span class="die-cap" aria-hidden="true">set aside</span></span>`).join("");
 
   return `<div class="box combat-card" role="status" aria-live="polite">
     <span class="box-label">Attack</span>
@@ -5653,7 +5897,7 @@ const UI = {
 
 const RAIL = [
   ["Q", "Turn left"], ["E", "Turn right"], ["F", "Attack"], ["N", "Next unit"],
-  ["Z", "Undo"], [".", "End turn"], ["?", "Help"],
+  ["Z", "Undo"], [".", "End turn (press twice)"], ["?", "Help"],
 ];
 
 function esc(s) {
@@ -5792,6 +6036,10 @@ function renderScene() {
 
 function boot() {
   renderScene();
+  placeThumbCmds();
+  PHONE.addEventListener("change", () => { placeThumbCmds(); placeFrame(); });
+  window.addEventListener("resize", placeFrame);
+  if (window.ResizeObserver) new ResizeObserver(placeFrame).observe(document.getElementById("app"));
   validateTables();
   const shot = /[#&]shot=([a-z]+)/.exec(location.hash);
   loadPrefs();
