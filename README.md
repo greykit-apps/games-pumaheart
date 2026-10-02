@@ -40,7 +40,8 @@ full view: the dice tumble and settle one at a time, and the outcome is withheld
 one stops, and the board keeps the defeated base until the card has cleared, so you watch it go
 rather than find it gone. When the AI attacks, the board calls the shot first — the attacker
 rings in its own colour, its reach washes in, and the base about to be hit pulses red — so the
-dice never arrive without saying who threw them. The field report keeps each attack as its four
+dice never arrive without saying who threw them. Its moves play one at a time, and where each
+unit started and where it ended stay marked on the board until you take your first action. The field report keeps each attack as its four
 faces and what the roll cost.
 
 **PANIC is what makes the game.** If every die comes up PANIC the unit turns about and retreats
@@ -75,9 +76,10 @@ Win by killing the enemy King, or by leaving it standing alone on the field.
   square without facing it, Peasants that panic once per PANIC die rolled, and Mercenaries that
   panic their victims, never panic themselves, and **change sides** when an enemy King bribes
   them.
-- **Three AI difficulties.** Squire plays greedily and is blind to threats; Knight looks a turn
+- **Three AI difficulties.** Squire plays greedily and is blind to threats; Captain looks a turn
   ahead; Marshal searches wider. Measured over 150 games a side: Marshal beats Squire 87%,
-  Knight beats Squire 83%, Marshal beats Knight 78%.
+  Captain beats Squire 83%, Marshal beats Captain 78%. (The middle level was called Knight
+  until it was renamed so as not to share a name with a warrior.)
 - **An opening library of eight shapes** — the printed line, an archer screen, a refused flank
   either way, a vanguard, everything forward, wide wings, held back. The AI draws from it by
   skill: a Squire lands on a weak shape about a quarter of the time, a Marshal under 1 in 300.
@@ -113,9 +115,9 @@ No unit ever rolls more than four dice, because the box contains exactly four.
 ## What's Approximated
 
 Short, for once, because we have the rulebook. Everything above is printed rule, and the
-defaults ship as printed. The 1997 rules are genuinely silent on four points, where the game has
-to decide something and the readings below are ours. Two further entries are not gaps at all —
-they are printed rules we offer a house rule against, and they are marked as such:
+defaults ship as printed. The 1997 rules are genuinely silent or unclear on eight points, where the game
+has to decide something and the readings below are ours. Two further entries are not gaps at
+all — they are printed rules we offer a house rule against, and they are marked as such:
 
 1. **Which basic bases you drop when customising.** The rules fix ten bases and cap each
    special, but never itemise the trade. We let the figure pool do that work.
@@ -191,7 +193,7 @@ that, for anyone who prefers them.
 | F | attack ahead |
 | N / P | next / previous unit with a legal action |
 | Z | undo (an attack seals everything before it) |
-| . | end turn |
+| . | end turn — press twice, since it throws away the actions left |
 | ? / H | help · M mute · Escape dismiss |
 
 ## Other Puma Games
