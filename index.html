@@ -63,7 +63,6 @@
   --mv: var(--accent);             /* legal move destination    */
   --tg: var(--danger);             /* legal attack target       */
   --zone: rgba(242, 196, 0, 0.14);   /* an archer's 3x3 block -- PumaRally's hazard */
-  --lane: rgba(84, 242, 255, 0.12);  /* a mounted charge lane   */
   --sq-light: var(--floor);
   --sq-dark: var(--panel);
   --deploy-green: rgba(74, 222, 106, 0.07);  /* side 0 deployment ranks */
@@ -144,10 +143,8 @@ body {
   font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--steel);
 }
-.box.is-live { border-color: var(--accent-dim); }
 
-/* Progressive disclosure, native. The three house rules carry about 150 words
-   on where the 1997 rulebook is silent -- which is the port's whole argument,
+/* Progressive disclosure, native. The house rules and their notes on where the 1997 rulebook is silent -- which is the port's whole argument,
    and exactly the wrong thing to hand someone who has never heard of
    Lionheart at the moment they are trying to start a game. */
 .disclose { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
@@ -408,7 +405,7 @@ body {
 .u .pipnum { position: static; font-size: 10px; color: currentColor; line-height: 1; }
 
 /* Deployment */
-#deploybar { flex: none; background: var(--panel); }
+#deploybar { flex: none; }
 /* Side by side in the 320px rail: the default padding stacked them. */
 #deploybar .muster-actions { flex-wrap: wrap; }
 #deploybar .muster-actions .btn { flex: 1 1 auto; padding: 8px 6px; }
@@ -420,11 +417,9 @@ body {
 #deploybar[hidden] { display: none !important; }
 #deploybar .dep-who { margin: 2px 0 4px; }
 #deploybar p { margin: 2px 0; }
-#deploybar kbd { color: var(--accent); }
 .sq.dzone { outline: 1px solid var(--lit); outline-offset: -1px; }
 
 
-/* Menu and help share the overlay shell */
 /* The ending sits over the board rather than replacing it -- the final
    position is the last thing worth looking at, so it stays lit behind. */
 #over {
@@ -450,6 +445,7 @@ body {
 .over-count dd { color: var(--dim); }
 .over-card .muster-actions { justify-content: center; }
 
+/* Menu and help share the overlay shell. */
 #menu, #help {
   position: fixed; inset: 0; z-index: 8200; display: flex;
   align-items: center; justify-content: center; background: rgba(5,7,15,0.94);
@@ -458,7 +454,6 @@ body {
 #menu[hidden], #help[hidden] { display: none !important; }
 .menu-card { background: var(--bg); min-width: 340px; max-width: 560px; }
 .help-card { background: var(--bg); max-width: 780px; }
-.tut-card { background: var(--bg); max-width: 420px; }
 .menu-rows { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 10px 0 14px; align-items: start; }
 .menu-rows dt { color: var(--steel); }
 .menu-rows dd { margin: 0; display: flex; gap: 6px; flex-wrap: wrap; }
@@ -484,7 +479,6 @@ table.ref thead th { color: var(--steel); font-weight: normal; font-size: 11px;
 table.ref tbody th { font-weight: normal; white-space: nowrap; }
 table.ref td.note { color: var(--dim); font-size: 12px; min-width: 220px; }
 table.ref.keys { max-width: 460px; }
-.u .pipnum { position: static; font-size: 10px; color: currentColor; line-height: 1; }
 
 /* Tumbling: dim and restless, so a settled die reads as decided. Both
    keyframes belong to the cut-in's .bigdie now -- there was a Dice panel
@@ -539,7 +533,6 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 .why.ok { color: var(--accent); }
 .muster-actions { display: flex; gap: 10px; }
 .btn[disabled] { color: var(--dim); border-color: var(--panel2); cursor: not-allowed; }
-.hud-new { display: flex; gap: 8px; margin-left: auto; }
 /* Six identical ghost buttons said nothing about which one you want. Ending
    your turn is the only command play needs, so it is the only one that looks
    like a command; the two toggles read as settings; starting over -- the one
@@ -558,8 +551,6 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 .hud-new .cmd.is-off,
 .hud-new .cmd.is-primary.is-off { opacity: 0.38; cursor: default; color: var(--dim); border-color: var(--line); }
 .hud-new .cmd.is-off:hover { color: var(--dim); border-color: var(--line); background: none; }
-/* The toggles keep their marker so the gap between them does not read as a
-   missing button when the separator disappears. */
 
 
 /* Hot-seat handover curtain */
@@ -682,7 +673,6 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   #touchbar[hidden] { display: flex !important; visibility: hidden; min-height: 46px; }
 }
 
-/* Nothing hangs outside a square any more, so the board needs no headroom. */
 
 /* ============================================================
    COMBAT CUT-IN
@@ -762,13 +752,6 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1.02); }
 }
 
-/* An action spent: the pips acknowledge the cost. */
-@keyframes spend {
-  from { opacity: 0.3; transform: scale(1.18); }
-  to   { opacity: 1; transform: none; }
-}
-.acts { display: inline-block; }          /* transformable without reflowing the HUD */
-.acts.spent { animation: spend 260ms var(--ease-out-expo); }
 
 /* HUD & status */
 #hud-state { display: flex; align-items: center; gap: 12px; }
@@ -795,7 +778,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 }
 
 @media (pointer: coarse) {
-  .btn, .icon-btn, .hud-new .cmd { min-height: 44px; display: inline-flex; align-items: center; }
+  .btn, .hud-new .cmd { min-height: 44px; display: inline-flex; align-items: center; }
 }
 
 @media (max-width: 760px) {
@@ -825,7 +808,6 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   }
   /* What just happened outranks what is selected: after an AI attack the
      field report must not be a scroll away. */
-  #side { flex-direction: column; }
   #side { contain: none; overflow: visible; }
   #log { order: 1; min-height: 120px; flex: none; }
   #status { order: 2; }
@@ -923,8 +905,9 @@ const DIE_FACES = [AXE, AXE, AXE, ARROW, ARROW, PANIC];
 /* p.8 Gameplay Reference Table. perBase is the printed maximum:
    the rulebook prints fixed counts for basic units and ranges for
    specials ("1 or 2", "up to 4"), but calls 4 "the standard limit
-   of 4 Infantry per base", so we read them all as maxima and allow
-   under-filled bases. See the plan, section 6 gap 2. */
+   of 4 Infantry per base", so we read them all as maxima. A base is still
+   fielded full: under-filling one is the "Bases may be under-filled" house
+   rule (README, "What's approximated", point 2). */
 const UNIT_DEFS = {
   king: {
     name: "King", perPlayer: 1, perBase: 1, dicePerFig: 2,
@@ -949,7 +932,7 @@ const UNIT_DEFS = {
   heavy: {
     name: "Heavy Infantry", perPlayer: 2, perBase: 2, dicePerFig: 2,
     hitFace: AXE, htk: 2, mounted: false, panics: true,
-    moveCost: 2, turnCost: 2, allAdjacent: true, needsFacing: false,
+    moveCost: 2, turnCost: 2, allAdjacent: true,
     note: "Move and Turn cost 2 actions each. Attacks any adjacent square, facing ignored.",
   },
   peasant: {
@@ -959,7 +942,7 @@ const UNIT_DEFS = {
   },
   mercenary: {
     name: "Mercenary", perPlayer: 2, perBase: 2, dicePerFig: 2,
-    hitFace: AXE, htk: 1, mounted: false, panics: false, panicsVictim: true, bribable: true,
+    hitFace: AXE, htk: 1, mounted: false, panics: false, panicsVictim: true,
     note: "Never panics. Its victim retreats 1 square per PANIC rolled. Can be bribed by a King.",
   },
 };
@@ -1054,10 +1037,6 @@ function panicsFrom(def, panics, n) {
   return panics === n ? 1 : 0;
 }
 
-function diceForFigs(type, figs) {
-  return Math.min(MAX_DICE, figs * UNIT_DEFS[type].dicePerFig);
-}
-
 /* ============================================================
    GAME STATE
    G is pure JSON and is saved verbatim: no Map, no Set, no
@@ -1150,7 +1129,7 @@ function newGame(seed, opts) {
   }
   /* p.4: "Each player rolls all 4 Combat dice. The player who rolls the
      most Battle-axes will go first." Ties are not addressed by the rules;
-     we re-roll (plan section 6, gap 3). */
+     we re-roll (README, "What's approximated", point 3). */
   for (;;) {
     const a = rollDice(4).kept.filter(f => f === AXE).length;
     const b = rollDice(4).kept.filter(f => f === AXE).length;
@@ -1347,9 +1326,7 @@ function resolveAttack(P, grid, atk, def) {
 
   if (needsLastManDuel(atk, def)) {
     res.duel = true;
-    /* A Peasant's hitFace is null -- it scores with "whichever you rolled the
-       most of" -- so the re-roll cannot test equality against a single face. */
-    const isHit = f => ad.hitFace === null ? f !== PANIC : f === ad.hitFace;
+    const isHit = f => f === ad.hitFace;
     const t1 = rollDice(1, atk.side, ad.hitFace);
     if (t1.gone !== null) res.dropped.push(t1.gone);
     const f1 = t1.kept[0];
@@ -1655,7 +1632,7 @@ function assertSerialisable() {
    ============================================================ */
 function playRandomGame(seed) {
   newGame(seed);
-  G.cfg.roundCap = 60;                    /* sims must terminate; human play has no cap */
+  G.cfg.roundCap = 60;                    /* sims end sooner than the 200-round backstop */
   HARNESS.watermark = {};
   HARNESS.expectedUnits = G.units.length;
   if (!HARNESS.tally) HARNESS.resetTally();
@@ -2051,10 +2028,7 @@ function commit() {
 /* ============================================================
    GLYPHS — one silhouette path per unit type on a 24x24 box.
    Drawn as paths, never as text: no web fonts are loaded and a
-   glyph must not depend on one being present. These are the
-   BOARD treatment; the 16x16 pixel portraits (B5b) are the
-   status-panel treatment, because a portrait is unreadable at
-   32px.
+   glyph must not depend on one being present.
    ============================================================ */
 const UNIT_GLYPH = {
   king: "M3 17l1.6-9 4 4.4L12 4l3.4 8.4 4-4.4L21 17zM4 18.4h16V21H4z",
@@ -2299,16 +2273,13 @@ function renderHUD() {
     const t = document.getElementById("hud-turn");
     if (t) t.textContent = `${G.players[G.deploySide].name} is deploying`;
   }
-  const sp = document.getElementById("hud-speed");
-  if (sp) sp.textContent = "Speed: " + SPEED_NAME[UI.speed];
-  const mu = document.getElementById("hud-mute");
-  if (mu) mu.textContent = UI.muted ? "Sound off" : "Sound on";
+  syncPrefsChrome();
   /* Undo and End turn stand down when they cannot act -- at game over, while
      the machine is animating, and before the first action of a turn. Undo in
      particular looked live at every moment and swallowed the click. */
   setCmdEnabled("hud-undo", canUndo() && myTurn());
   setCmdEnabled("hud-end", G.phase === "play" && myTurn());
-  if (G.phase === "deploy") { syncPrefsChrome(); return; }
+  if (G.phase === "deploy") return;
   const p = G.players[G.turn];
   const pips = `<span class="acts" aria-hidden="true">${
     "●".repeat(G.actionsLeft)}${"○".repeat(Math.max(0, 2 - G.actionsLeft))}</span>`;
@@ -2560,7 +2531,7 @@ function attackSentence(res) {
 }
 
 function attackEvents(res) {
-  const atk = byUid(G, res.atkUid), def = byUid(G, res.defUid);
+  const atk = byUid(G, res.atkUid);
   /* The cut-in runs FIRST, while the board still shows the position as it was
      when the dice were thrown. Only once the outcome has been read does the
      board re-render and take the casualty off. */
@@ -2706,7 +2677,7 @@ function setupDrag() {
 
 /* ============================================================
    HUMAN INPUT
-   One click listener and one keydown listener on #app, routed by
+   One click listener and one keydown listener on document, routed by
    data-act, plus contextual activation on the grid. Selection is
    the only mode: clicking a legal destination moves, clicking a
    legal target attacks, so ordinary play never needs a mode
@@ -2933,9 +2904,6 @@ function passTurn() {
 const ACTS = {
   turnLeft: () => turnSelected(-1),
   turnRight: () => turnSelected(1),
-  attack: attackAhead,
-  next: () => cycleUnit(1),
-  prev: () => cycleUnit(-1),
   undo: doUndo,
   endTurn: passTurn,
   help: () => toggleHelp(),
@@ -2980,7 +2948,6 @@ const ACTS = {
      difficulty, same house rules, the other army. It used to open the New
      game menu, which has no side to choose. */
   changeSides: () => { clearSave(); UI.humanSide = 1 - humanSideOf(); openMuster(UI.humanSide); },
-  newGame: () => { clearSave(); startGame(); },
 };
 
 function dispatchAct(name, el) {
@@ -2996,7 +2963,7 @@ const KEYS = {
   n: () => cycleUnit(1), p: () => cycleUnit(-1),
   1: () => faceSelected(N), 2: () => faceSelected(E), 3: () => faceSelected(S), 4: () => faceSelected(WEST),
   q: () => dispatchAct("turnLeft"), e: () => dispatchAct("turnRight"),
-  f: attackAhead, z: doUndo, ".": passTurn, m: toggleMute, s2: null,
+  f: attackAhead, z: doUndo, ".": passTurn, m: toggleMute,
   /* Escape dismisses the topmost overlay, then falls back to clearing the
      selection. It deliberately does NOT clear the handover curtain: that has
      to go through Ready, which calls advance(), or the phase machine is left
@@ -3034,7 +3001,6 @@ function setupInput() {
 
   setupDrag();
   app.addEventListener("focusin", ev => { UI.focusInGrid = !!ev.target.closest("#grid"); });
-  void app;
 
   document.addEventListener("keydown", ev => {
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
@@ -3067,7 +3033,7 @@ function toggleHelp() {
 
 function startGame(seed, opts) {
   UI.rects = null;                      /* no FLIP continuity across games */
-  UI.entering = true; UI.lastSel = null; UI.lastActions = null; UI.lastTurnKey = null;
+  UI.entering = true; UI.lastSel = null; UI.lastTurnKey = null;
   UI.aim = null; UI.preAttack = null; UI.openingShown = null; UI.openingIdx = null;
   for (const g of document.querySelectorAll(".ghost")) g.remove();
   newGame(seed == null ? Math.floor(Math.random() * 1e9) : seed,
@@ -3106,7 +3072,7 @@ function humanSideOf() {
    they would consume rnd() in unbounded amounts that depend on
    search internals; DICE_DIST gives exact probabilities for
    free. botChooseTurn() therefore touches G.rng ZERO times,
-   which invariant 12 asserts rather than assumes -- including
+   which botChooseTurnChecked() asserts rather than assumes -- including
    the difficulty noise, which is derived from a hash of the
    position instead of a draw.
 
@@ -3182,10 +3148,9 @@ function expectedAttack(P, atk, def) {
   const ad = defOf(atk), dd = defOf(def);
 
   if (needsLastManDuel(atk, def)) {
-    /* One die; on a hit, roll it again. Enumerated over both rolls so a
-       Peasant's "most of" scoring is handled like any other. */
+    /* One die; on a hit, roll it again. Enumerated over both rolls. */
     const P_OF = { [AXE]: P_AXE, [ARROW]: P_ARROW, [PANIC]: P_PANIC };
-    const isHit = f => ad.hitFace === null ? f !== PANIC : f === ad.hitFace;
+    const isHit = f => f === ad.hitFace;
     let pPanic = 0, pTwo = 0;
     for (const f1 of [AXE, ARROW, PANIC]) {
       if (f1 === PANIC) { pPanic += P_OF[f1]; continue; }
@@ -3970,7 +3935,6 @@ const SFX = {
   hit:    () => { tone(180, 0.09, "sawtooth", 0.07); clatter(0.07, 0.05); },
   kill:   () => { tone(140, 0.22, "sawtooth", 0.08); tone(70, 0.3, "square", 0.05, 0.05); },
   panic:  () => { tone(420, 0.1, "sine", 0.05); tone(300, 0.12, "sine", 0.05, 0.08); tone(200, 0.16, "sine", 0.05, 0.17); },
-  victory: () => [0, 0.12, 0.24, 0.42].forEach((d, i) => tone([392, 523, 659, 784][i], 0.3, "triangle", 0.06, d)),
 };
 
 function sfx(name) {
@@ -4018,10 +3982,9 @@ function loadPrefs() {
    invented this" are not the same claim. Everything is off by
    default, so the shipped defaults are the printed game.
    ============================================================ */
-/* Shown in the menu. The 60-round limit is deliberately NOT here: it is not a
-   printed rule at all, it exists only so headless simulations terminate, and
-   offering it as a choice invites someone to switch on a rule the game does
-   not have. The flag stays in cfg for runSim to set. */
+/* Shown in the menu. The round limit is deliberately NOT here: it is not a
+   printed rule at all, only a stalemate backstop, and offering it as a choice
+   invites someone to switch on a rule the game does not have. */
 /* Off is the printed game -- the rulebook as written, and where it is silent,
    the most literal reading of what it does say. Every switch here is an
    override: four of ours, and one the rulebook supplies itself. None of them
@@ -4046,7 +4009,7 @@ const HOUSE_RULES = [
 
 function defaultHouseRules() {
   return { massiveInfantry: false, partialBases: false, freeKing: false,
-           extraGreen: false, extraGold: false, useRoundCap: false };
+           extraGreen: false, extraGold: false };
 }
 /* The engine keeps its own polarity -- anchorKing describes a
    restriction, which is what the rules functions want to ask about. This is
@@ -4056,7 +4019,7 @@ function houseRulesToCfg(hr) {
            partialBases: !!hr.partialBases,
            anchorKing: !hr.freeKing,
            extraDie: [!!hr.extraGreen, !!hr.extraGold],
-           roundCap: hr.useRoundCap ? 60 : STALEMATE_CAP };
+           roundCap: STALEMATE_CAP };
 }
 
 /* ============================================================
@@ -4118,7 +4081,7 @@ function renderMenu() {
 /* ============================================================
    HELP — rendered FROM the rule tables, never transcribed
    beside them, so a change to a printed number reaches the help
-   with no edit here. That is the B10 gate.
+   with no edit here.
    ============================================================ */
 function renderHelp() {
   const el = document.getElementById("help");
@@ -4256,8 +4219,8 @@ function renderOver() {
   }
   const w = G.result.winner;
   const REASON = {
-    king: w === null ? "" : "the enemy King is down",
-    alone: w === null ? "" : "the enemy King stands alone on the field",
+    king: "the enemy King is down",
+    alone: "the enemy King stands alone on the field",
     cap: "the round limit ran out",
   };
   /* Figures still standing, which is the game's own measure of a margin. */
@@ -4334,7 +4297,7 @@ function renderCoach() {
    #shot=<name> drives the page to a fixed, reproducible board
    so the README images can be regenerated from a seed instead
    of being caught by hand. Motion and sound are off, and the
-   the coach is suppressed, or its line lands in every frame.
+   coach is suppressed, or its line lands in every frame.
    ============================================================ */
 function botStep(side, skill) {
   const grid = buildGrid(G);
@@ -4353,10 +4316,6 @@ function botStep(side, skill) {
     if (v) { G.result = v; G.gameOver = true; return true; }
   }
   return false;
-}
-
-function fastForward(actions) {
-  for (let i = 0; i < actions && !G.gameOver; i++) botStep(G.turn, 2);
 }
 
 const SHOTS = {
@@ -4536,8 +4495,6 @@ function inDeployZone(side, c, r) {
    -- the author plays it that way, with the board in front of him -- and it
    is his to switch on, not ours to assume. */
 function isAnchored(u) { return u.type === "king" && !!(G.cfg && G.cfg.anchorKing); }
-
-function deployingSide() { return G.phase === "deploy" ? G.deploySide : -1; }
 
 /* Move within the zone, or swap with one of your own bases. Both are legal
    at any moment, so there is never an illegal board to guard against. */
@@ -4791,7 +4748,6 @@ function attackWith(atk, def) {
   if (res.victimRetreat && def.alive) panicRetreat(G, def, res.victimRetreat, 0);
   return res;
 }
-function at(c, r) { return unitAt(G, buildGrid(G), c, r); }
 
 const RULE_TESTS = [
   ["a King killed by an attack that leaves the attacker's King alone still loses", () => {
@@ -5600,7 +5556,7 @@ function validateTables() {
   }
   for (const t in UNIT_DEFS) {
     const d = UNIT_DEFS[t];
-    if (Math.min(MAX_DICE, d.perBase * d.dicePerFig) > MAX_DICE) {
+    if (d.perBase * d.dicePerFig > MAX_DICE) {
       throw new Error(`${t} would roll more than ${MAX_DICE} dice; the box holds ${MAX_DICE}`);
     }
   }
@@ -5618,30 +5574,26 @@ function validateTables() {
 }
 
 /* ============================================================
-   BOOT — chrome plus rule tables. No rules engine yet: No rules engine yet: per the plan,
-   per the plan, nothing renders for real until the headless
-   random-mover sim in B3 is green.
+   BOOT
    ============================================================ */
-"use strict";
 
 const UI = {
   reducedMotion: false, headless: false, autoHuman: false,
   sel: null, cur: null, focusInGrid: false,
   eventQueue: [], animating: false, advancing: false, needAdvance: false,
-  curtain: false, curtainThen: null, speedFactor: 1, undo: [], help: false,
+  curtain: false, curtainThen: null, speedFactor: 1, undo: [],
   musterOpen: false, musterSide: 0, muster: null, musterSpecs: null, pendingOpponent: "ai",
   muted: false, speed: 1, rects: null, rotLock: null, rotLockTimer: null, aim: null, preAttack: null,
   menuOpen: false, menuAdvanced: false, helpOpen: false, coach: null,
   openingIdx: null, drag: null, draggedAt: 0,
-  bloom: false, lastSel: null, entering: false, lastActions: null, lastTurnKey: null,
+  bloom: false, lastSel: null, entering: false, lastTurnKey: null,
   pendingSkill: 1, houseRules: null,
   menu: { opponent: "ai", skill: "1", house: {} },
 };
 
 const RAIL = [
-  ["Q", "Turn left", "turnLeft"], ["E", "Turn right", "turnRight"],
-  ["F", "Attack", "attack"], ["N", "Next unit", "next"],
-  ["Z", "Undo", "undo"], [".", "End turn", "endTurn"], ["?", "Help", "help"],
+  ["Q", "Turn left"], ["E", "Turn right"], ["F", "Attack"], ["N", "Next unit"],
+  ["Z", "Undo"], [".", "End turn"], ["?", "Help"],
 ];
 
 function esc(s) {
