@@ -3299,6 +3299,7 @@ function startGame(seed, opts) {
   }
   UI.sel = null; UI.undo = [];
   if (G.phase === "deploy") {
+    startLibrary();
     log(`${G.players[G.deploySide].name} lays a battle plan.`);
     updateAll();
     return;
@@ -4793,10 +4794,21 @@ function deployFace(unit, face) {
 /* Steps through the same library the AI draws from, so the shapes are
    learnable by using them rather than by being described. Each press is the
    next opening, named in the field report; adjust from there by hand. */
+/* A human's line is laid as OPENINGS[0] (see newGame), so that is where the
+   library starts: Re-form the line's first press goes to the SECOND shape.
+   Starting from null made the first press re-lay the printed line over
+   itself -- nothing moved, and it took a second press to see the button do
+   anything. Named in the bar from the start, so the player can see which
+   shape they are looking at and that the button steps on from it. */
+function startLibrary() {
+  UI.openingIdx = 0;
+  UI.openingShown = OPENINGS[0].key;
+}
+
 function deployAuto() {
   const side = G.deploySide;
   const mine = G.units.filter(u => u.side === side);
-  UI.openingIdx = UI.openingIdx == null ? 0 : (UI.openingIdx + 1) % OPENINGS.length;
+  UI.openingIdx = UI.openingIdx == null ? 1 : (UI.openingIdx + 1) % OPENINGS.length;
   const op = OPENINGS[UI.openingIdx];
   const list = mine.map(u => ({ type: u.type, figs: u.figs }));
   placeArmy(side, list, op).forEach(p => {
@@ -4821,6 +4833,7 @@ function deployReady() {
   if (otherIsHuman && !G.playersDeployed.includes(other)) {
     G.deploySide = other;
     UI.sel = null;
+    startLibrary();                     /* the second plan starts on the printed line too */
     UI.cur = idx(4, deployRows(other)[0]);
     /* Hot-seat: the second battle plan is laid in secret, which is what the
        rulebook's upright game box is for. */
