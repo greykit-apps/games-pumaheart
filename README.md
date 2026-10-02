@@ -134,6 +134,11 @@ they are printed rules we offer a house rule against, and they are marked as suc
    in the back row”*, and it does. **The King deploys freely** is the house rule against it.
 6. **Whether a lone Peasant gets the two-hit re-roll.** Printed for Infantry and Archers and
    never mentioned for Peasants, and they do not get it. They are peasants.
+7. **Who wins when both Kings are left alone at once.** One attack can do it — Peasants clear
+   the enemy's last warrior and then panic off the board. Not addressed; the side whose action
+   did it wins. A King killed outright always beats a King left alone.
+8. **Whether a bribed Mercenary may act the turn it changes sides.** p.7 says only *"The
+   Mercenary unit is now on your side!"* We let it: it has not attacked for its new owner yet.
 
 Plus one thing that is not a rule at all. A game is called a **stalemate at 200 rounds** — a
 backstop, not a rule: the AI could reach a position it judged not worth leaving, and with
@@ -162,8 +167,9 @@ rider threatens from the opening position.
 Everything is done with the mouse. Click one of your bases and its legal moves ring in cyan
 and anything it can attack rings in red — click a ring to act. Or just **drag the base** where
 you want it and let go, which is the same two decisions with the button held down. The two
-curved arrows in a selected base's front corners turn it a quarter turn each way. These
-shortcuts mirror all of that, for anyone who prefers them.
+curved arrows in a selected base's front corners turn it a quarter turn each way, and a turn is
+one action however far it goes — click twice for an about-face. These shortcuts mirror all of
+that, for anyone who prefers them.
 
 
 | Key | |
