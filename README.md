@@ -91,8 +91,7 @@ Win by killing the enemy King, or by leaving it standing alone on the field.
   from the field report, and a reduced-motion path that skips animation entirely rather than
   merely disabling transitions.
 - **House rules**, all off, so what ships is the printed game. Each is an override you switch
-  on: under-filled bases, a freely-deployed King, the re-roll extended to lone Peasants, an
-  extra die for either army — plus the rulebook's own optional Massive Infantry rule.
+  on: under-filled bases, a freely-deployed King, an extra die for either army — plus the rulebook's own optional Massive Infantry rule.
 
 ## The Warriors
 
@@ -134,9 +133,7 @@ they are printed rules we offer a house rule against, and they are marked as suc
 5. **Where the King starts.** *Not a gap.* p.6 says *“Your King must start on the royal emblem
    in the back row”*, and it does. **The King deploys freely** is the house rule against it.
 6. **Whether a lone Peasant gets the two-hit re-roll.** Printed for Infantry and Archers and
-   never mentioned for Peasants, so as shipped they do not get it. **Lone Peasants get the
-   re-roll** is the house rule that extends it, on the grounds that one die can otherwise never
-   score the two hits armour needs.
+   never mentioned for Peasants, and they do not get it. They are peasants.
 
 Plus one thing that is not a rule at all. A game is called a **stalemate at 200 rounds** — a
 backstop, not a rule: the AI could reach a position it judged not worth leaving, and with
