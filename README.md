@@ -162,7 +162,7 @@ rider threatens from the opening position.
 
 ## Mouse First, Keyboard Too
 
-Everything is done with the mouse. Click one of your bases and its legal moves ring in green
+Everything is done with the mouse. Click one of your bases and its legal moves ring in cyan
 and anything it can attack rings in red — click a ring to act. Or just **drag the base** where
 you want it and let go, which is the same two decisions with the button held down. The two
 curved arrows in a selected base's front corners turn it a quarter turn each way. These

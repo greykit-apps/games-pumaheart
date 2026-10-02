@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PumaHeart — Medieval Grid Wargame</title>
 <meta name="description" content="A faithful port of Lionheart (1997). Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
-<meta name="theme-color" content="#0a0a0a">
+<meta name="theme-color" content="#05070f">
 <meta name="color-scheme" content="dark">
 <meta name="referrer" content="no-referrer">
 <meta property="og:title" content="PumaHeart">
@@ -29,70 +29,69 @@
 <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
 <style>
 /* ============================================================
-   TOKENS — cybersec-CRT tribe palette. The :root values are
-   byte-identical to the sibling games; everything PumaHeart
-   adds is a mapping onto them, never a new hue.
+   TOKENS — Tactical tribe, PumaRally's palette. The first :root
+   is the same TOKENS table PumaCity retypes, retyped again here
+   because this is a single file and imports nothing; keep it
+   byte-identical to PumaCity's. Everything PumaHeart adds is a
+   mapping onto it, never a new hue.
    ============================================================ */
+:root{--bg:#05070f;--panel:#0a0e1a;--panel2:#0d1424;--line:#1b2540;--lit:#47609c;
+  --text:#dbe4fb;--ink:#8b96b8;--dim:#7d8aa8;--accent:#54f2ff;--warn:#ffb000;--danger:#ff5266;
+  --good:#4ade6a;--violet:#b47dff;--steel:#94a0c4;--blue:#4c8dff}
 :root {
-  --green: #00ff41;
-  --green-dim: #00cc33;
-  --green-dark: #009926;
-  --amber: #ffb000;
-  --amber-dim: #cc8800;
-  --red: #ff3333;
-  --red-dim: #cc2222;
-  --yellow: #ffdd33;
-  --blue: #6699ff;
-  --pink: #ff5fbf;
-  --cyan: #00cccc;
-  --white: #e8ffe8;
-  --bg: #0a0a0a;
-  --panel: #111;
-  --panel-2: #0d160d;
-  --border: #1a3a1a;
-  --text: #00ff41;
-  --text-dim: #00aa2a;
+  /* Darker steps of tribe hues, for borders under a lit label. accent-dim
+     and floor are PumaRally's; the other two are the same hue taken down. */
+  --accent-dim: #2b7f92;
+  --good-dim: #297a3a;
+  --danger-dim: #a8364a;
+  --floor: #0e1524;
   --font-mono: "Courier New", "Lucida Console", monospace;
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* --- PumaHeart mapping layer -------------------------------
-     The two armies sit at 14.50:1 and 10.81:1 against --bg, but only
-     1.34:1 against EACH OTHER: green and amber differ in hue, not
-     in brightness, which is the pair red-green colour blindness
-     confuses. Side is therefore also carried by glyph treatment
-     (side 0 filled, side 1 outlined), by the figure pips, and by
-     the aria-label. Never let colour be the only channel. */
-  --army-green: var(--green);       /* side 0 */
-  --army-gold: var(--amber);        /* side 1 */
-  --sel: var(--white);             /* selection ring            */
-  --mv: var(--cyan);               /* legal move destination    */
-  --tg: var(--red);                /* legal attack target       */
-  --zone: rgba(255, 221, 51, 0.14);  /* an archer's 3x3 block   */
-  --lane: rgba(0, 204, 204, 0.12);   /* a mounted charge lane   */
-  --sq-light: #0d160d;
-  --sq-dark: #0a0f0a;
-  --deploy-green: rgba(0, 255, 65, 0.07);    /* side 0 deployment ranks */
-  --deploy-gold: rgba(255, 176, 0, 0.07);   /* side 1 deployment ranks */
+     Cyan is the live thing, amber is Gold, green is Green, red is
+     only harm. The two armies sit at 11.45:1 and 10.98:1 against
+     --bg but only 1.04:1 against EACH OTHER: they differ in hue
+     alone, which is the pair red-green colour blindness confuses.
+     Side is therefore also carried by base treatment (side 0
+     solid, side 1 dashed), by the figure pips, and by the
+     aria-label. Never let colour be the only channel. */
+  --army-green: var(--good);       /* side 0 */
+  --army-gold: var(--warn);        /* side 1 */
+  --sel: var(--text);              /* selection ring            */
+  --mv: var(--accent);             /* legal move destination    */
+  --tg: var(--danger);             /* legal attack target       */
+  --zone: rgba(242, 196, 0, 0.14);   /* an archer's 3x3 block -- PumaRally's hazard */
+  --lane: rgba(84, 242, 255, 0.12);  /* a mounted charge lane   */
+  --sq-light: var(--floor);
+  --sq-dark: var(--panel);
+  --deploy-green: rgba(74, 222, 106, 0.07);  /* side 0 deployment ranks */
+  --deploy-gold: rgba(255, 176, 0, 0.07);    /* side 1 deployment ranks */
 
   /* Floors at 32px so a 9-wide board fits a 380px viewport. */
   /* Nine files have to clear the rail and the gaps, eight ranks the window.
-     The old ceiling of 58px stopped the board growing at all on a desktop
-     and left better than half the viewport empty below it. */
-  --sq: clamp(32px, min(calc((100vw - 372px) / 9.6), 9.4vh), 96px);
-  /* Deployment adds a bar under the board carrying the only way out of the
-     phase, so the board yields the height rather than pushing "Take the
-     field" off the bottom of the screen. */
-  --sq-deploy: clamp(30px, min(calc((100vw - 372px) / 9.6), 6.6vh), 72px);
+     424px is the rail, the gaps, and the stage's margin around the frame;
+     --chrome-h is everything stacked above and below the eight ranks -- the
+     stage margin, the frame, the HUD and the Field box -- plus room for a
+     three-line hint, so a hint arriving does not push the board off-screen
+     at any size down to a small laptop.
+     Without one the frame is that much shorter and the scenery fills in.
+     ONE SIZE FOR EVERY PHASE. The board used to shrink for deployment and
+     the frame to widen with whatever was under the board, and with the
+     frame centred over scenery every change of width slid the field in and
+     out behind it. The board's size depends on the window alone. */
+  --chrome-h: 242px;
+  --sq: clamp(32px, min(calc((100vw - 424px) / 9.6), calc((100vh - var(--chrome-h)) / 8)), 96px);
 }
 
 * { box-sizing: border-box; }
 :root { color-scheme: dark; }
-* { scrollbar-width: thin; scrollbar-color: #1a3a1a var(--bg); }
+* { scrollbar-width: thin; scrollbar-color: var(--line) var(--bg); }
 *::-webkit-scrollbar { width: 9px; height: 9px; }
 *::-webkit-scrollbar-track { background: var(--bg); }
-*::-webkit-scrollbar-thumb { background: #1a3a1a; border: 2px solid var(--bg); border-radius: 5px; }
-*::-webkit-scrollbar-thumb:hover { background: var(--green-dark); }
+*::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid var(--bg); border-radius: 5px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--lit); }
 
 html, body { height: 100%; }
 body {
@@ -101,16 +100,32 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
-/* The CRT overlay is the tribe signature. Reduced motion kills it. */
-body::before {
-  content: ""; position: fixed; inset: 0; z-index: 9000; pointer-events: none;
-  background: repeating-linear-gradient(0deg,
-    rgba(0,0,0,0.18) 0px, rgba(0,0,0,0.18) 1px, transparent 1px, transparent 3px);
+/* ============================================================
+   SCENERY -- a line-drawn field at dusk behind the frame, after
+   PumaCity's. Low contrast on purpose: it frames the board and
+   never competes with it. The colours are PumaCity's scene
+   values; the only game hues it borrows are the two armies',
+   one to a side.
+   ============================================================ */
+.scene {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background: linear-gradient(#05070f 0%, #070b17 40%, #0c1020 68%, #181622 88%, #231a17 100%);
 }
-body::after {
-  content: ""; position: fixed; inset: 0; z-index: 9001; pointer-events: none;
-  background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
-}
+.scene svg { display: block; width: 100%; height: 100%; }
+.scene .sf { fill: #0a0f1d; stroke: #2a3960; stroke-width: 2; stroke-linejoin: round; }
+.scene .sf.far { fill: #080c18; stroke: #1d2948; }
+.scene .sground { fill: #070a13; }
+.scene .sl { fill: none; stroke: #2a3960; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.scene .sd { fill: none; stroke: #1d2948; stroke-width: 1.5; stroke-linecap: round; }
+.scene .sx { fill: #111a30; }
+.scene .st { fill: #8b96b8; opacity: 0.45; }
+.scene .smoon { fill: #dbe4fb; opacity: 0.32; }
+.scene .ssky { fill: #05070f; }
+.scene .sgold { fill: #ffb000; opacity: 0.3; }
+.scene .sgreen { fill: #4ade6a; opacity: 0.3; }
+.scene .sgold.door, .scene .sgreen.door { opacity: 0.2; }
+.scene .sglow-gold { fill: #ffb000; opacity: 0.045; }
+.scene .sglow-green { fill: #4ade6a; opacity: 0.045; }
 
 /* ============================================================
    BOXED CHROME — the Crescent Hawk layer. Every panel is a hard
@@ -120,62 +135,85 @@ body::after {
    ============================================================ */
 .box {
   position: relative; background: var(--panel);
-  border: 1px solid var(--border); border-top: 3px double var(--border);
+  border: 1px solid var(--line); border-top: 3px double var(--line);
   padding: 14px 12px 12px;
 }
 .box > .box-label {
   position: absolute; top: -8px; left: 10px;
   background: var(--bg); padding: 0 6px;
   font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--amber);
+  color: var(--steel);
 }
-.box.is-live { border-color: var(--amber-dim); }
+.box.is-live { border-color: var(--accent-dim); }
 
 /* Progressive disclosure, native. The three house rules carry about 150 words
    on where the 1997 rulebook is silent -- which is the port's whole argument,
    and exactly the wrong thing to hand someone who has never heard of
    Lionheart at the moment they are trying to start a game. */
-.disclose { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 10px; }
+.disclose { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
 .disclose > summary {
-  cursor: pointer; color: var(--text-dim); list-style: none;
+  cursor: pointer; color: var(--dim); list-style: none;
   padding: 4px 0; user-select: none;
 }
 .disclose > summary::-webkit-details-marker { display: none; }
-.disclose > summary::before { content: "+ "; color: var(--amber); }
+.disclose > summary::before { content: "+ "; color: var(--accent); }
 .disclose[open] > summary::before { content: "\2212 "; }
 .disclose > summary:hover, .disclose > summary:focus-visible { color: var(--text); }
 /* The opening the library just laid, named where it can replace itself. */
 .dep-opening { margin: 6px 0 0; }
 .dep-opening .box-label-ish {
-  color: var(--amber); letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--steel); letter-spacing: 0.12em; text-transform: uppercase;
   font-size: 12px; margin-right: 8px;
 }
 
 /* ============================================================
-   LAYOUT — board centre, status panel beside it, battle-plan
-   bar under it during deployment. Collapses to one column on a
-   phone.
+   LAYOUT — board centre, the rail beside it, the battle plan
+   at the top of the rail during deployment. The frame is one
+   width in every phase and the board one size; only a hint under
+   the board changes the frame's height. Collapses to one column
+   on a phone, where the battle plan lands under the board.
    ============================================================ */
-#app.is-deploying { --sq: var(--sq-deploy); }
+/* THE STAGE centres the frame in the window, both ways, over the scenery --
+   PumaCity's arrangement. On a large screen the game used to sit at the top
+   with the rest of the window empty below it. */
+.stage {
+  position: relative; z-index: 1; min-height: 100dvh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
 #app {
-  display: grid; gap: 12px; padding: 12px;
-  /* The board column sizes to the board, so the FIELD frame stops being a
-     1300px box around a 520px board, and the rail sits against it instead of
-     400px away. justify-content centres the pair rather than stretching it. */
-  grid-template-columns: auto minmax(260px, 320px);
-  grid-template-areas: "hud hud" "board side" "touch side" "coach side" "bar side";
-  align-content: start; justify-content: center; min-height: 100%;
+  /* The frame: opaque, so the scenery never shows through text, and square
+     with the box's double rule rather than PumaCity's rounded, shadowed
+     terminal -- the Crescent Hawk layer is flat and framed. */
+  max-width: 100%; background: var(--bg);
+  border: 1px solid var(--line); border-top: 3px double var(--line);
+  /* Row spacing lives on the items, not in row-gap: the touch row is empty
+     most of the time, and a row-gap still opens between empty tracks, which
+     ran the rail past the board's foot once the frame made it visible. */
+  display: grid; gap: 0 12px; padding: 12px;
+  /* The board column is exactly as wide as the board -- min-content, so a
+     long line of text under it wraps instead of widening the frame -- and
+     the rail is a fixed 320px. Nothing a turn puts on screen moves either. */
+  grid-template-columns: min-content 320px;
+  grid-template-areas: "hud hud" "board side" "touch side";
+  align-content: start; justify-content: center;
 }
 #hud { grid-area: hud; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-width: 0; }
-#hud .brand { color: var(--amber); letter-spacing: 0.22em; text-transform: uppercase; }
-#hud .brand b { color: var(--green); font-weight: 700; }
-#board-wrap { grid-area: board; display: flex; justify-content: center; position: relative; }
+#hud .brand { color: var(--accent); letter-spacing: 0.22em; text-transform: uppercase; }
+#hud .brand b { color: var(--text); font-weight: 700; }
+#board-wrap, #side, #touchbar, #coach { margin-top: 12px; }
+#board-wrap { grid-area: board; display: flex; flex-direction: column; align-items: center; position: relative; }
 #grid { margin: 0 auto; }
-#side { grid-area: side; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* The rail takes its height from the board and never the other way round:
+   contain:size stops its contents counting toward the row, so the battle
+   plan or a long field report cannot stretch the frame. If it ever runs
+   short, it scrolls. */
+#side { grid-area: side; display: flex; flex-direction: column; gap: 14px; min-width: 0;
+  contain: size; overflow-y: auto; }
 /* The field report takes whatever height the board leaves, rather than
    stopping at 30vh and leaving the rail half empty on a tall screen. */
-#log { flex: 1 1 auto; min-height: 120px; display: flex; flex-direction: column; }
-#log-list { flex: 1 1 auto; }
+#log { flex: 1 1 0; min-height: 96px; display: flex; flex-direction: column; }
+#log-list { flex: 1 1 0; }
 
 /* Turning on touch. Hidden on a mouse, where the on-base handles are better:
    they sit on the corner they rotate and need no second place to look. */
@@ -183,70 +221,73 @@ body::after {
 #touchbar[hidden] { display: none !important; }
 .turnbtn {
   width: 52px; height: 46px; flex: none;
-  background: none; border: 1px solid var(--border); color: var(--amber);
+  background: none; border: 1px solid var(--line); color: var(--accent);
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .turnbtn svg { width: 26px; height: 26px; overflow: visible; }
 .turnbtn .arc { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 .turnbtn .head { fill: currentColor; stroke: none; }
-.turnbtn:active { color: var(--green); border-color: var(--amber-dim); }
+.turnbtn:active { color: var(--text); border-color: var(--accent-dim); }
 .turn-who { text-align: center; min-width: 9em; }
 .turn-who .dim { display: block; font-size: 12px; }
 
-/* THE COACH. One line, under the board, in the amber reserved for the thing
-   to look at -- not a modal, and never covering what it describes. */
+/* THE COACH. One line, under the board, in the cyan reserved for the thing
+   to look at -- not a modal, and never covering what it describes. It sits
+   inside the Field box and wraps to the board's width; with no hint it takes
+   no room at all. */
 #coach {
-  grid-area: coach; display: flex; align-items: flex-start; gap: 12px;
-  border: 1px solid var(--amber-dim); padding: 8px 10px;
-  color: var(--amber); animation: coachIn 260ms var(--ease-out-expo) backwards;
+  align-self: stretch; display: flex; align-items: flex-start; gap: 12px;
+  border: 1px solid var(--accent-dim); padding: 8px 10px;
+  color: var(--accent);
 }
+#coach > * { animation: coachIn 260ms var(--ease-out-expo) backwards; }
 /* display:flex beats the hidden attribute's default display:none, so the
    empty frame sat under the board for every state that has no hint. */
 #coach[hidden] { display: none !important; }
 #coach p { margin: 0; flex: 1; }
 @keyframes coachIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .coach-x {
-  flex: none; background: none; border: 1px solid var(--border); color: var(--text-dim);
+  flex: none; background: none; border: 1px solid var(--line); color: var(--dim);
   font: inherit; font-size: 12px; padding: 3px 8px; cursor: pointer;
 }
-.coach-x:hover, .coach-x:focus-visible { color: var(--text); border-color: var(--amber-dim); }
+.coach-x:hover, .coach-x:focus-visible { color: var(--text); border-color: var(--lit); }
 
 
 
 #log-list { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
-#log-list li { padding: 2px 0; border-bottom: 1px solid var(--panel-2); color: var(--text-dim); }
+#log-list li { padding: 2px 0; border-bottom: 1px solid var(--panel2); color: var(--dim); }
 /* An attack is two lines: who swung at what, then the roll and what it cost.
    Dice at log scale carry no border -- four boxed glyphs in a narrow column
    read as a row of buttons, and the field report is a record, not a control. */
 #log-list li.log-attack { padding: 5px 0 6px; }
 .log-who, .log-roll { margin: 0; }
 .log-roll { display: flex; align-items: center; gap: 3px; margin-top: 3px; }
-.logdie { width: 15px; height: 15px; flex: none; color: var(--text-dim); }
+.logdie { width: 15px; height: 15px; flex: none; color: var(--dim); }
 .logdie svg { width: 100%; height: 100%; display: block; }
 .logdie svg path { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
-.logdie.f-axe.scores, .logdie.f-arrow.scores { color: var(--green); }
-.logdie.f-panic { color: var(--red); }
+.logdie.f-axe.scores, .logdie.f-arrow.scores { color: var(--good); }
+.logdie.f-panic { color: var(--danger); }
 /* Set aside by the extra-die house rule: rolled, and not counted. */
 .logdie.discarded, .bigdie.discarded { opacity: 0.3; }
 .logdie.discarded { margin-left: 5px; }
 .bigdie.discarded { border-style: dashed; }
 .log-sum { margin-left: 5px; white-space: nowrap; }
-.sum-bad { color: var(--red); }
-.sum-note { color: var(--text-dim); }
+.sum-bad { color: var(--danger); }
+.sum-note { color: var(--dim); }
 
 /* ============================================================
    BOARD & UNITS
    Side is carried by FOUR channels, never by colour alone: hue,
    a solid vs dashed base ring, the figure pips, and the
-   aria-label. --army-green and --army-gold sit at 14.5:1 and 10.8:1
-   against the ground but only 1.34:1 against each other -- they differ
+   aria-label. --army-green and --army-gold sit at 11.5:1 and 11.0:1
+   against the ground but only 1.04:1 against each other -- they differ
    in hue, not brightness, which is exactly the pair red-green
    colour blindness confuses.
    ============================================================ */
-#grid { display: grid; grid-auto-rows: var(--sq); border: 1px solid var(--border); width: max-content; }
+#grid { display: grid; grid-auto-rows: var(--sq); border: 1px solid var(--line); width: max-content; }
 .sq {
   position: relative; width: var(--sq); height: var(--sq);
-  border: 1px solid var(--border); background: var(--sq-dark);
+  border: 1px solid var(--line); background: var(--sq-dark);
 }
 .sq.lt { background: var(--sq-light); }
 .sq.dz0 { background-image: linear-gradient(var(--deploy-green), var(--deploy-green)); }
@@ -262,7 +303,7 @@ body::after {
    through rather than as empty board. */
 .sq.screened::before {
   background: repeating-linear-gradient(
-    135deg, var(--border) 0 1px, transparent 1px 7px);
+    135deg, var(--line) 0 1px, transparent 1px 7px);
   opacity: 0.9;
 }
 .sq.mv::after { box-shadow: inset 0 0 0 2px var(--mv); }
@@ -357,12 +398,20 @@ body::after {
 .u .pipnum { position: static; font-size: 10px; color: currentColor; line-height: 1; }
 
 /* Deployment */
-#deploybar { grid-area: bar; background: var(--panel); }
+#deploybar { flex: none; background: var(--panel); }
+/* Side by side in the 320px rail: the default padding stacked them. */
+#deploybar .muster-actions { flex-wrap: wrap; }
+#deploybar .muster-actions .btn { flex: 1 1 auto; padding: 8px 6px; }
+/* The battle plan takes the rail's top, and the field report stands down
+   while it does: during deployment it only echoes placements the board is
+   already showing, and on a laptop-sized window the plan, the unit and the
+   report together overran the rail. */
+#app.is-deploying #log { display: none; }
 #deploybar[hidden] { display: none !important; }
 #deploybar .dep-who { margin: 2px 0 4px; }
 #deploybar p { margin: 2px 0; }
-#deploybar kbd { color: var(--amber); }
-.sq.dzone { outline: 1px solid var(--green-dark); outline-offset: -1px; }
+#deploybar kbd { color: var(--accent); }
+.sq.dzone { outline: 1px solid var(--lit); outline-offset: -1px; }
 
 
 /* Menu and help share the overlay shell */
@@ -371,7 +420,7 @@ body::after {
 #over {
   position: fixed; inset: 0; z-index: 60;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(10, 10, 10, 0.72); padding: 20px;
+  background: rgba(5, 7, 15, 0.72); padding: 20px;
   animation: backdropIn 200ms var(--ease-out-quart);
 }
 #over[hidden] { display: none !important; }
@@ -382,18 +431,18 @@ body::after {
 }
 @keyframes overIn { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
 .over-who { margin: 6px 0 2px; font-size: 21px; letter-spacing: 0.1em; text-transform: uppercase; }
-.over-why { margin: 0 0 16px; color: var(--text-dim); }
+.over-why { margin: 0 0 16px; color: var(--dim); }
 .over-count {
   display: grid; grid-template-columns: auto auto; gap: 3px 14px;
   justify-content: center; margin: 0 0 18px; text-align: left;
 }
 .over-count dt, .over-count dd { margin: 0; }
-.over-count dd { color: var(--text-dim); }
+.over-count dd { color: var(--dim); }
 .over-card .muster-actions { justify-content: center; }
 
 #menu, #help {
   position: fixed; inset: 0; z-index: 8200; display: flex;
-  align-items: center; justify-content: center; background: rgba(10,10,10,0.94);
+  align-items: center; justify-content: center; background: rgba(5,7,15,0.94);
   overflow: auto; padding: 16px;
 }
 #menu[hidden], #help[hidden] { display: none !important; }
@@ -401,29 +450,29 @@ body::after {
 .help-card { background: var(--bg); max-width: 780px; }
 .tut-card { background: var(--bg); max-width: 420px; }
 .menu-rows { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 10px 0 14px; align-items: start; }
-.menu-rows dt { color: var(--amber); }
+.menu-rows dt { color: var(--steel); }
 .menu-rows dd { margin: 0; display: flex; gap: 6px; flex-wrap: wrap; }
 .opt {
-  border: 1px solid var(--border); padding: 2px 8px; cursor: pointer; color: var(--text-dim);
+  border: 1px solid var(--line); padding: 2px 8px; cursor: pointer; color: var(--dim);
 }
-.opt:hover { border-color: var(--amber-dim); color: var(--text); }
-.opt.on { border-color: var(--green-dark); color: var(--green); }
-.prov-head { color: var(--amber); margin: 10px 0 4px; }
+.opt:hover { border-color: var(--lit); color: var(--text); }
+.opt.on { border-color: var(--accent-dim); color: var(--accent); }
+.prov-head { color: var(--steel); margin: 10px 0 4px; }
 ul.house { list-style: none; margin: 0 0 12px; padding: 0; }
-ul.house li { border-top: 1px solid var(--panel-2); padding: 6px 0; }
-ul.house .prov { color: var(--amber-dim); font-size: 11px; margin-left: 8px; }
+ul.house li { border-top: 1px solid var(--panel2); padding: 6px 0; }
+ul.house .prov { color: var(--dim); font-size: 11px; margin-left: 8px; }
 ul.house p { margin: 3px 0 0; font-size: 13px; }
-.help-card h3 { color: var(--amber); font-size: 12px; letter-spacing: 0.12em;
+.help-card h3 { color: var(--steel); font-size: 12px; letter-spacing: 0.12em;
   text-transform: uppercase; margin: 16px 0 6px; }
 .help-card p { margin: 6px 0; }
 .scrollx { overflow-x: auto; }
 table.ref { border-collapse: collapse; width: 100%; }
-table.ref th, table.ref td { text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--panel-2);
+table.ref th, table.ref td { text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--panel2);
   vertical-align: top; }
-table.ref thead th { color: var(--amber); font-weight: normal; font-size: 11px;
+table.ref thead th { color: var(--steel); font-weight: normal; font-size: 11px;
   letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
 table.ref tbody th { font-weight: normal; white-space: nowrap; }
-table.ref td.note { color: var(--text-dim); font-size: 12px; min-width: 220px; }
+table.ref td.note { color: var(--dim); font-size: 12px; min-width: 220px; }
 table.ref.keys { max-width: 460px; }
 .u .pipnum { position: static; font-size: 10px; color: currentColor; line-height: 1; }
 
@@ -452,33 +501,34 @@ table.ref.keys { max-width: 460px; }
 /* Muster screen */
 #muster {
   position: fixed; inset: 0; z-index: 8100; display: flex;
-  align-items: center; justify-content: center; background: rgba(10,10,10,0.94);
+  align-items: center; justify-content: center; background: rgba(5,7,15,0.94);
   overflow: auto; padding: 16px;
 }
 #muster[hidden] { display: none !important; }
 .muster-card { background: var(--bg); min-width: 340px; max-width: 560px; }
 table.muster { border-collapse: collapse; width: 100%; margin: 10px 0; }
-table.muster th, table.muster td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--panel-2); }
-table.muster thead th { color: var(--amber); font-weight: normal; font-size: 11px;
+table.muster th, table.muster td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--panel2); }
+table.muster thead th { color: var(--steel); font-weight: normal; font-size: 11px;
   letter-spacing: 0.1em; text-transform: uppercase; }
 table.muster tbody th { font-weight: normal; }
-table.muster .cap { color: var(--text-dim); font-size: 11px; }
-table.muster .pool { color: var(--text-dim); text-align: right; }
-table.muster tr.bad .pool, table.muster tr.bad th { color: var(--red); }
-table.muster tr.locked { color: var(--text-dim); }
+table.muster .cap { color: var(--dim); font-size: 11px; }
+table.muster .pool { color: var(--dim); text-align: right; }
+table.muster tr.bad .pool, table.muster tr.bad th { color: var(--danger); }
+table.muster tr.locked { color: var(--dim); }
 td.step { white-space: nowrap; }
 td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 .sbtn {
   display: inline-block; min-width: 20px; text-align: center; cursor: pointer;
-  border: 1px solid var(--border); color: var(--amber); line-height: 18px;
+  border: 1px solid var(--line); color: var(--accent); line-height: 18px;
 }
-.sbtn:hover { border-color: var(--amber-dim); }
+.sbtn:hover { border-color: var(--lit); }
 .tally { margin: 6px 0 0; }
-.tally .ok { color: var(--green); }
-.tally .bad { color: var(--red); }
-.why { margin: 4px 0 12px; color: var(--amber); min-height: 1.4em; }
+.tally .ok { color: var(--good); }
+.tally .bad { color: var(--danger); }
+.why { margin: 4px 0 12px; color: var(--warn); min-height: 1.4em; }
+.why.ok { color: var(--accent); }
 .muster-actions { display: flex; gap: 10px; }
-.btn[disabled] { color: var(--text-dim); border-color: var(--panel-2); cursor: not-allowed; }
+.btn[disabled] { color: var(--dim); border-color: var(--panel2); cursor: not-allowed; }
 .hud-new { display: flex; gap: 8px; margin-left: auto; }
 /* Six identical ghost buttons said nothing about which one you want. Ending
    your turn is the only command play needs, so it is the only one that looks
@@ -487,17 +537,17 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 .hud-new { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
 /* flex:none, or a narrow window shrinks the long ones below their text and
    clips them instead of wrapping the row. */
-.hud-new .cmd { flex: none; white-space: nowrap; color: var(--text-dim); cursor: pointer; padding: 2px 6px; border: 1px solid var(--border); }
-.hud-new .cmd:hover { color: var(--text); border-color: var(--amber-dim); }
-.hud-new .cmd.is-primary { color: var(--amber); border-color: var(--amber-dim); }
-.hud-new .cmd.is-primary:hover { color: var(--bg); background: var(--amber); border-color: var(--amber); }
+.hud-new .cmd { flex: none; white-space: nowrap; color: var(--dim); cursor: pointer; padding: 2px 6px; border: 1px solid var(--line); }
+.hud-new .cmd:hover { color: var(--text); border-color: var(--lit); }
+.hud-new .cmd.is-primary { color: var(--accent); border-color: var(--accent-dim); }
+.hud-new .cmd.is-primary:hover { color: var(--bg); background: var(--accent); border-color: var(--accent); }
 .hud-new .cmd.is-toggle { border-style: dashed; }
 .hud-new .cmd.is-quiet { border-color: transparent; }
-.hud-new .cmd.is-quiet:hover { border-color: var(--border); }
+.hud-new .cmd.is-quiet:hover { border-color: var(--line); }
 /* A command that cannot act says so, instead of swallowing the click. */
 .hud-new .cmd.is-off,
-.hud-new .cmd.is-primary.is-off { opacity: 0.38; cursor: default; color: var(--text-dim); border-color: var(--border); }
-.hud-new .cmd.is-off:hover { color: var(--text-dim); border-color: var(--border); background: none; }
+.hud-new .cmd.is-primary.is-off { opacity: 0.38; cursor: default; color: var(--dim); border-color: var(--line); }
+.hud-new .cmd.is-off:hover { color: var(--dim); border-color: var(--line); background: none; }
 /* The toggles keep their marker so the gap between them does not read as a
    missing button when the separator disappears. */
 
@@ -505,20 +555,20 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 /* Hot-seat handover curtain */
 #curtain {
   position: fixed; inset: 0; z-index: 8000; display: flex;
-  align-items: center; justify-content: center; background: rgba(10,10,10,0.92);
+  align-items: center; justify-content: center; background: rgba(5,7,15,0.92);
 }
 #curtain[hidden] { display: none !important; }
 .curtain-card { min-width: 260px; text-align: center; background: var(--bg); }
 .btn {
-  font: inherit; color: var(--amber); background: none;
-  border: 1px solid var(--border); border-top-width: 3px; border-top-style: double;
+  font: inherit; color: var(--accent); background: none;
+  border: 1px solid var(--line); border-top-width: 3px; border-top-style: double;
   padding: 8px 18px; cursor: pointer;
 }
-.btn:hover { border-color: var(--amber-dim); }
+.btn:hover { border-color: var(--lit); }
 /* Every button in a card being identical leaves the player hunting for the
    one that starts the thing. */
-.btn.btn-go { color: var(--amber); border-color: var(--amber-dim); }
-.btn.btn-go:hover { color: var(--bg); background: var(--amber); border-color: var(--amber); }
+.btn.btn-go { color: var(--accent); border-color: var(--accent-dim); }
+.btn.btn-go:hover { color: var(--bg); background: var(--accent); border-color: var(--accent); }
 
 /* ============================================================
    FEEDBACK
@@ -589,7 +639,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
      rank behind, and an opaque box was what used to hide that. A north-facing
      base has those corners shaved away, so the handles drop into empty
      notches; on other facings they sit on a thin stroke and a 13% fill, which
-     amber reads over comfortably. */
+     cyan reads over comfortably. */
   /* The box is larger than the arrow: the extra is transparent padding, so
      the mark stays a small gesture while the target stays easy to hit. */
   position: absolute; top: 0;
@@ -597,7 +647,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   min-width: 17px; min-height: 17px;
   display: flex; align-items: center; justify-content: center;
   border: 0; background: none;
-  color: var(--amber); cursor: pointer; z-index: 12;
+  color: var(--accent); cursor: pointer; z-index: 12;
   /* A dark halo so the bare stroke stays legible over any square. */
   filter: drop-shadow(0 0 2px var(--bg)) drop-shadow(0 0 1px var(--bg));
   animation: rotIn 200ms var(--ease-out-expo) backwards;
@@ -608,8 +658,8 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 .rot svg { width: 90%; height: 90%; overflow: visible; }
 .rot .arc  { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 .rot .head { fill: currentColor; stroke: none; }
-.rot:hover, .rot:focus-visible { color: var(--white); }
-.rot:active { color: var(--green); }
+.rot:hover, .rot:focus-visible { color: var(--text); }
+.rot:active { color: var(--accent-dim); }
 @keyframes rotIn { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: none; } }
 
 /* Touch needs a real target, and a phone board is only 32px a square. */
@@ -617,6 +667,9 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   /* Off the base entirely -- see renderTouchbar(). */
   .rots { display: none; }
   #touchbar { display: flex; }
+}
+@media (pointer: coarse) and (min-width: 761px) {
+  #touchbar[hidden] { display: flex !important; visibility: hidden; min-height: 46px; }
 }
 
 /* Nothing hangs outside a square any more, so the board needs no headroom. */
@@ -638,7 +691,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 
 .combat-card {
   background: var(--bg); text-align: center; min-width: min(320px, 88vw);
-  box-shadow: 0 0 0 1px var(--border), 0 18px 60px rgba(0, 0, 0, 0.75);
+  box-shadow: 0 0 0 1px var(--line), 0 18px 60px rgba(0, 0, 0, 0.75);
   animation: cutIn 260ms var(--ease-out-expo) backwards;
 }
 @keyframes cutIn {
@@ -651,15 +704,15 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 
 /* Big, because the dice are the event rather than a readout. */
 .bigdie {
-  width: 66px; height: 66px; border: 1px solid var(--border);
+  width: 66px; height: 66px; border: 1px solid var(--line);
   display: flex; align-items: center; justify-content: center;
-  color: var(--text-dim);
+  color: var(--dim);
 }
 .bigdie svg { width: 74%; height: 74%; }
 .bigdie svg path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-.bigdie.f-axe.scores, .bigdie.f-arrow.scores { color: var(--green); border-color: var(--green-dark); }
-.bigdie.f-panic { color: var(--red); border-color: var(--red-dim); }
-.bigdie.rolling { color: var(--text-dim); border-color: var(--border); animation: rollShake 150ms linear infinite; }
+.bigdie.f-axe.scores, .bigdie.f-arrow.scores { color: var(--good); border-color: var(--good-dim); }
+.bigdie.f-panic { color: var(--danger); border-color: var(--danger-dim); }
+.bigdie.rolling { color: var(--dim); border-color: var(--line); animation: rollShake 150ms linear infinite; }
 .bigdie.settled { animation: dieLand 300ms var(--ease-out-expo); }
 
 .combat-out {
@@ -668,10 +721,10 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 }
 /* Withheld until the last die stops. */
 .combat-out.pending { opacity: 0; }
-.combat-out.t-kill { color: var(--red); }
-.combat-out.t-hit { color: var(--amber); }
-.combat-out.t-bad { color: var(--red); }
-.combat-out.t-none { color: var(--text-dim); }
+.combat-out.t-kill { color: var(--danger); }
+.combat-out.t-hit { color: var(--warn); }
+.combat-out.t-bad { color: var(--danger); }
+.combat-out.t-none { color: var(--dim); }
 .combat-note { margin: 6px 0 0; font-size: 12px; }
 
 @media (max-width: 760px) {
@@ -688,7 +741,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 #turnbar {
   position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%);
   z-index: 30; pointer-events: none;
-  padding: 6px 18px; border: 1px solid var(--border); border-top: 3px double var(--border);
+  padding: 6px 18px; border: 1px solid var(--line); border-top: 3px double var(--line);
   background: var(--bg); letter-spacing: 0.18em; text-transform: uppercase;
   animation: turnSweep 1150ms var(--ease-out-quart) forwards;
 }
@@ -711,21 +764,23 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 #hud-state { display: flex; align-items: center; gap: 12px; }
 .side.s0 { color: var(--army-green); }
 .side.s1 { color: var(--army-gold); }
-.acts { letter-spacing: 2px; color: var(--amber); }
-.rnd { color: var(--text-dim); }
+.acts { letter-spacing: 2px; color: var(--accent); }
+.rnd { color: var(--dim); }
 .unit-name { margin: 0 0 8px; letter-spacing: 0.1em; text-transform: uppercase; }
 .stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
-.stats dt { color: var(--text-dim); }
+.stats dt { color: var(--dim); }
 .stats dd { margin: 0; }
-.note { color: var(--text-dim); margin: 10px 0 0; font-size: 13px; }
-.dim { color: var(--text-dim); margin: 0; }
+.note { color: var(--dim); margin: 10px 0 0; font-size: 13px; }
+.dim { color: var(--dim); margin: 0; }
 
 /* ============================================================
    A11Y, TOUCH, MOTION, RESPONSIVE
    ============================================================ */
-*:focus-visible { outline: 2px solid var(--white); outline-offset: 2px; }
+*:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .sr-only {
-  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  /* Pinned to the top: left at its static position, the live region below
+     the stage made every page one pixel too tall to fit the window. */
+  position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap;
 }
 
@@ -750,17 +805,19 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
     white-space: normal; text-align: center; justify-content: center;
     padding: 6px 4px;
   }
+  .scene { display: none; }
+  .stage { display: block; padding: 0; }
+  #app { border: 0; }
   #app {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "hud" "board" "touch" "coach" "bar" "side";
+    grid-template-areas: "hud" "board" "touch" "side";
     justify-content: stretch;
   }
-  /* The deploy bar rides under the board on a phone rather than floating. */
-  #deploybar { order: 3; }
   /* What just happened outranks what is selected: after an AI attack the
      field report must not be a scroll away. */
   #side { flex-direction: column; }
-  #log { order: 1; }
+  #side { contain: none; overflow: visible; }
+  #log { order: 1; min-height: 120px; flex: none; }
   #status { order: 2; }
   #log-list { max-height: 34vh; }
 }
@@ -768,13 +825,14 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   #combat { display: none !important; }
-  body::before, body::after { display: none; }
   .ghost { display: none !important; }
   #turnbar { display: none !important; }
 }
 </style>
 </head>
 <body>
+<div class="scene" id="scene" aria-hidden="true"></div>
+<div class="stage">
 <div id="app">
   <header id="hud">
     <span class="brand">Puma<b>Heart</b></span>
@@ -793,10 +851,14 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   <section id="board-wrap" class="box" aria-labelledby="board-label">
     <span class="box-label" id="board-label">Field</span>
     <div id="grid" role="grid" aria-label="Battlefield, 9 files by 8 ranks"></div>
+    <aside id="coach" hidden aria-live="polite"></aside>
     <div id="combat" hidden></div>
   </section>
 
   <aside id="side">
+    <!-- The battle plan rides in the rail, so deployment needs no room under
+         the board and the board keeps its size. -->
+    <nav id="deploybar" class="box" hidden aria-label="Battle plan"></nav>
     <div id="status" class="box" aria-labelledby="status-label">
       <span class="box-label" id="status-label">Unit</span>
       <div id="status-body">No unit selected.</div>
@@ -808,11 +870,9 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
   </aside>
 
   <nav id="touchbar" hidden aria-label="Turn the selected unit"></nav>
-  <aside id="coach" hidden aria-live="polite"></aside>
   <div id="over" hidden></div>
 
-  <nav id="deploybar" class="box" hidden aria-label="Battle plan"></nav>
-
+</div>
 </div>
 <div id="curtain" hidden></div>
 <div id="muster" hidden></div>
@@ -1034,9 +1094,9 @@ function newGame(seed, opts) {
            noPeasantDuel: true, extraDie: [false, false], roundCap: STALEMATE_CAP },
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* p.2: "There are two armies -- one gold, one silver." Gold is gold here.
-       Silver is not: the CRT palette renders side 0 in phosphor green, and a
-       side named for a colour it is plainly not is worse than a side named
-       for what the player can see. */
+       Silver is not: the palette renders side 0 in green, and a side named
+       for a colour it is plainly not is worse than a side named for what
+       the player can see. */
     players: [
       { id: 0, army: "green", name: "Green", isBot: false, skill: 1, losses: 0 },
       { id: 1, army: "gold", name: "Gold", isBot: true, skill: 1, losses: 0 },
@@ -3626,7 +3686,7 @@ function renderMuster() {
     </table>
     <p class="tally">Bases <b class="${n === BASES_TOTAL ? "ok" : "bad"}">${n}</b> of ${BASES_TOTAL}
        &middot; ${specFigures(spec)} warriors</p>
-    <p class="why" role="status">${why ? esc(why) : "Ready."}</p>
+    <p class="why${why ? "" : " ok"}" role="status">${why ? esc(why) : "Ready."}</p>
     <div class="muster-actions">
       <button class="btn" data-act="musterPreset">Basic army</button>
       <button class="btn btn-go" data-act="musterConfirm" ${why ? "disabled" : ""}>Take the field</button>
@@ -4012,7 +4072,7 @@ function renderHelp() {
     </table></div>
 
     <h3>Playing with the mouse</h3>
-    <p>Click one of your bases to select it. Its legal moves ring in green and anything it can
+    <p>Click one of your bases to select it. Its legal moves ring in cyan and anything it can
        attack rings in red &mdash; click a ring to act. Or just <b>drag the base</b> where you
        want it and let go, which is the same two decisions with the button held down. The small
        curved arrows in a selected base's front corners turn it a quarter turn each way, and
@@ -4138,11 +4198,19 @@ function renderCoach() {
   const el = document.getElementById("coach");
   if (!el) return;
   const seen = coachSeen();
-  /* Nothing over an overlay, and nothing while the machine is mid-sentence. */
-  const busy = UI.curtain || UI.menuOpen || UI.helpOpen || UI.musterOpen || UI.animating;
-  const hit = busy ? null : COACH.find(c => !seen[c.id] && c.when());
-  if (!hit) { el.hidden = true; el.innerHTML = ""; return; }
+  /* Nothing over an overlay, and no NEW hint while the machine is
+     mid-sentence. A hint already showing stays through the animation: it
+     used to blink out for every move, and each time the frame changed
+     height and re-centred over the scenery. */
+  const overlay = UI.curtain || UI.menuOpen || UI.helpOpen || UI.musterOpen;
+  const standing = UI.animating && el.dataset.id ? COACH.find(c => c.id === el.dataset.id && !seen[c.id]) : null;
+  const hit = overlay ? null : standing || (UI.animating ? null : COACH.find(c => !seen[c.id] && c.when()));
+  if (!hit) { el.hidden = true; el.innerHTML = ""; delete el.dataset.id; return; }
   el.hidden = false;
+  /* The reveal animates the contents, so they are only rebuilt when the
+     hint itself changes -- not on every render while it stands. */
+  if (el.dataset.id === hit.id) return;
+  el.dataset.id = hit.id;
   el.innerHTML = `<p>${esc(hit.text)}</p>
     <button class="coach-x" data-act="coachGot" data-id="${hit.id}"
       aria-label="Got it, hide this hint">Got it</button>`;
@@ -5438,7 +5506,123 @@ window.__PH = {
   legalActions, buildGrid, UNIT_DEFS, DICE_DIST,
 };
 
+/* ============================================================
+   SCENERY
+   One 1600x900 picture drawn "xMidYMax slice", composed so the
+   landmarks sit in the side margins (x < 330, x > 1270) and the
+   bottom band (y > 760) that the centred frame leaves showing --
+   PumaCity's method. A field at dusk: a keep on the far hill to
+   the left, a pine ridge to the right, and the two armies'
+   pavilions in front, Gold's on the left and Green's on the
+   right. Drawn once, at boot; nothing in it moves.
+   ============================================================ */
+const SCENE_G = 820;                      /* the ground line */
+
+/* Its own little generator, so the stars never draw on the game's RNG. */
+function sceneRand(seed) {
+  let s = seed >>> 0;
+  return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+}
+function sceneStars(seed, n, ymax) {
+  const r = sceneRand(seed);
+  let o = "";
+  for (let i = 0; i < n; i++) {
+    const x = Math.round(r() * 1600), y = Math.round(r() * ymax), big = r() < 0.25;
+    o += `<circle class="st" cx="${x}" cy="${y}" r="${big ? 1.6 : 1}"/>`;
+  }
+  return o;
+}
+/* A crenellated top, as path commands running left to right from the
+   current point: merlon, crenel, merlon. */
+function sceneMerlons(w, m) {
+  const n = Math.max(1, Math.floor(w / (m * 2)));
+  const step = w / (n * 2 - 1);
+  let d = "";
+  for (let i = 0; i < n * 2 - 1; i++) d += i % 2 ? ` v${m} h${step} v${-m}` : ` h${step}`;
+  return d;
+}
+function sceneTower(x, base, w, h) {
+  return `<path class="sf far" d="M${x} ${base} V${base - h}${sceneMerlons(w, 9)} V${base} Z"/>`;
+}
+/* The keep on the far hill. Unlit: it belongs to neither army. */
+function sceneKeep(x, base) {
+  let o = `<path class="sf far" d="M${x + 20} ${base} V${base - 56}${sceneMerlons(180, 8)} V${base} Z"/>`;
+  o += sceneTower(x, base, 44, 112) + sceneTower(x + 176, base, 44, 104);
+  o += sceneTower(x + 78, base, 64, 150);
+  o += `<path class="sx" d="M${x + 98} ${base} V${base - 22} q12 -14 24 0 V${base} Z"/>`;
+  for (const [wx, wy] of [[x + 17, base - 84], [x + 193, base - 76], [x + 104, base - 118], [x + 122, base - 118]]) {
+    o += `<rect class="sx" x="${wx}" y="${wy}" width="8" height="16"/>`;
+  }
+  /* A bare pole on the keep: no colours flown, it is nobody's. */
+  o += `<path class="sd" d="M${x + 110} ${base - 150} V${base - 192}"/>`;
+  return o;
+}
+function scenePine(x, base, h) {
+  const w = h * 0.42;
+  return `<path class="sf far" d="M${x} ${base - h} L${x + w / 2} ${base - h * 0.42} H${x + w * 0.22} L${x + w * 0.62} ${base - 6} H${x - w * 0.62} L${x - w * 0.22} ${base - h * 0.42} H${x - w / 2} Z"/>`;
+}
+/* A pavilion: round wall, cone roof, scalloped valance, a doorway lit from
+   inside and a swallow-tailed pennant in its army's colour. Every pennant
+   streams the same way -- one wind over one field. */
+function scenePavilion(x, w, h, side) {
+  const G = SCENE_G, hw = w / 2, eave = G - h * 0.42, apex = G - h;
+  let o = `<path class="sglow-${side}" d="M${x - w * 0.13} ${G} L${x - w * 0.5} ${G + 46} H${x + w * 0.5} L${x + w * 0.13} ${G} Z"/>`;
+  o += `<path class="sf" d="M${x - hw * 0.88} ${G} V${eave} H${x + hw * 0.88} V${G} Z"/>`;
+  o += `<path class="sf" d="M${x - hw} ${eave} L${x} ${apex} L${x + hw} ${eave} Z"/>`;
+  const n = Math.max(4, Math.round(w / 24)), step = w / n;
+  let v = `M${x - hw} ${eave}`;
+  for (let i = 0; i < n; i++) v += ` q${(step / 2).toFixed(1)} ${(step * 0.5).toFixed(1)} ${step.toFixed(1)} 0`;
+  o += `<path class="sl" d="${v}"/>`;
+  o += `<path class="sd" d="M${x} ${apex} L${x - hw * 0.42} ${eave} M${x} ${apex} L${x + hw * 0.42} ${eave}"/>`;
+  o += `<path class="s${side} door" d="M${x} ${eave + 16} L${x - w * 0.12} ${G} H${x + w * 0.12} Z"/>`;
+  const top = apex - 50;
+  o += `<path class="sl" d="M${x} ${apex} V${top}"/>`;
+  o += `<path class="s${side}" d="M${x} ${top} L${x + 50} ${top + 8} L${x + 34} ${top + 15} L${x + 50} ${top + 22} L${x} ${top + 28} Z"/>`;
+  return o;
+}
+/* A tall standard planted in the field: a hanging banner, notched at the
+   foot, on a crossbar. */
+function sceneStandard(x, h, side) {
+  const G = SCENE_G, top = G - h;
+  return `<path class="sl" d="M${x} ${G} V${top} M${x - 22} ${top + 10} H${x + 22}"/>`
+    + `<path class="s${side}" d="M${x - 18} ${top + 12} H${x + 18} V${top + 84} L${x} ${top + 70} L${x - 18} ${top + 84} Z"/>`;
+}
+function sceneTufts(seed, n, x0, x1) {
+  const r = sceneRand(seed);
+  let o = "";
+  for (let i = 0; i < n; i++) {
+    const x = Math.round(x0 + r() * (x1 - x0)), y = Math.round(SCENE_G + 18 + r() * 70);
+    o += `<path class="sd" d="M${x - 6} ${y} l4 -9 M${x} ${y} v-12 M${x + 6} ${y} l-4 -9"/>`;
+  }
+  return o;
+}
+function sceneSVG() {
+  const G = SCENE_G;
+  let o = sceneStars(17, 110, 420);
+  o += `<circle class="smoon" cx="1460" cy="112" r="22"/><circle class="ssky" cx="1469" cy="105" r="20"/>`;
+  /* The far ridge runs the whole width; the board hides its middle. */
+  o += `<path class="sf far" d="M0 ${G} V716 Q120 690 240 704 T480 700 T760 712 T1040 698 T1320 708 T1600 694 V${G} Z"/>`;
+  /* The keep's hill, left, and the pine ridge, right. */
+  o += `<path class="sf far" d="M-20 ${G} V640 Q90 584 200 590 Q330 598 400 700 L420 ${G} Z"/>`;
+  o += sceneKeep(78, 600);
+  o += `<path class="sf far" d="M1200 ${G} Q1300 660 1440 640 Q1540 628 1620 650 V${G} Z"/>`;
+  for (const [x, b, h] of [[1290, 700, 70], [1338, 680, 96], [1384, 664, 84], [1430, 652, 112],
+                           [1478, 646, 92], [1524, 642, 104], [1570, 648, 80]]) o += scenePine(x, b, h);
+  o += `<rect class="sground" x="0" y="${G}" width="1600" height="${900 - G}"/>`;
+  o += `<path class="sd" d="M0 ${G} H1600"/>`;
+  /* The camps. */
+  o += scenePavilion(236, 120, 150, "gold") + scenePavilion(100, 170, 210, "gold") + sceneStandard(348, 250, "gold");
+  o += scenePavilion(1364, 120, 150, "green") + scenePavilion(1500, 170, 210, "green") + sceneStandard(1252, 250, "green");
+  o += sceneTufts(5, 40, 0, 1600);
+  return `<svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">${o}</svg>`;
+}
+function renderScene() {
+  const el = document.getElementById("scene");
+  if (el) el.innerHTML = sceneSVG();
+}
+
 function boot() {
+  renderScene();
   validateTables();
   const shot = /[#&]shot=([a-z]+)/.exec(location.hash);
   loadPrefs();
@@ -5466,7 +5650,7 @@ function boot() {
   openMuster(0);
   console.log(
     "%cPumaHeart — a port of Lionheart (Parker Brothers, 1997). Board is 9x8, not the 9x10 the internet claims.",
-    "color:#00ff41"
+    "color:#54f2ff"
   );
 }
 
