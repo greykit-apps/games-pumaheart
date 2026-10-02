@@ -1101,7 +1101,7 @@ function newGame(seed, opts) {
        terminate, and is off (0) in human play. */
     cfg: { setup: (opts && opts.setup) || "basic", opponent: "ai",
            massiveInfantry: false, partialBases: false, anchorKing: true,
-           noPeasantDuel: true, extraDie: [false, false], roundCap: STALEMATE_CAP },
+           extraDie: [false, false], roundCap: STALEMATE_CAP },
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* p.2: "There are two armies -- one gold, one silver." Gold is gold here.
        Silver is not: the palette renders side 0 in green, and a side named
@@ -1302,13 +1302,12 @@ function rollDice(n, side, hitFace) {
    needs two hits rolls one die, and on a hit rolls that die again. A PANIC
    either time panics the attacker. */
 /* p.5 prints this for Infantry, and extends it to Archers in the Archer note.
-   Peasants also roll one die a figure, so a lone one could otherwise never
-   score the two hits armour needs -- we read the rule as covering them too.
-   The literal reading is available as a house rule. */
+   It is never extended to Peasants, and they do not get it -- they are
+   peasants. A lone one rolls its single die against armour and cannot score
+   the two hits it needs. */
 function needsLastManDuel(atk, def) {
   if (atk.figs !== 1 || defOf(atk).dicePerFig !== 1 || defOf(def).htk !== 2) return false;
-  if (atk.type === "peasant" && G && G.cfg && G.cfg.noPeasantDuel) return false;
-  return true;
+  return atk.type !== "peasant";
 }
 
 function resolveAttack(P, grid, atk, def) {
@@ -3925,7 +3924,7 @@ function loadPrefs() {
    not have. The flag stays in cfg for runSim to set. */
 /* Off is the printed game -- the rulebook as written, and where it is silent,
    the most literal reading of what it does say. Every switch here is an
-   override: three of ours, and one the rulebook supplies itself. None of them
+   override: four of ours, and one the rulebook supplies itself. None of them
    is on unless you turn it on, so what ships is Larry Harris's game. */
 const HOUSE_RULES = [
   { key: "massiveInfantry", name: "Massive Infantry",
@@ -3943,22 +3942,18 @@ const HOUSE_RULES = [
   { key: "extraGold", name: "Gold rolls an extra die",
     source: "Our house rule",
     note: "The same for Gold. Set one for a handicap either way, or both to leave the odds level and the fights bloodier." },
-  { key: "peasantDuel", name: "Lone Peasants get the re-roll",
-    source: "Our house rule",
-    note: "The re-roll that lets a single figure hurt armour is printed for Infantry and Archers and never mentioned for Peasants. This extends it to them, since one die can otherwise never score the two hits armour needs." },
 ];
 
 function defaultHouseRules() {
   return { massiveInfantry: false, partialBases: false, freeKing: false,
-           peasantDuel: false, extraGreen: false, extraGold: false, useRoundCap: false };
+           extraGreen: false, extraGold: false, useRoundCap: false };
 }
-/* The engine keeps its own polarity -- noPeasantDuel and anchorKing describe
-   restrictions, which is what the rules functions want to ask about. This is
+/* The engine keeps its own polarity -- anchorKing describes a
+   restriction, which is what the rules functions want to ask about. This is
    the one place the two vocabularies meet. */
 function houseRulesToCfg(hr) {
   return { massiveInfantry: !!hr.massiveInfantry,
            partialBases: !!hr.partialBases,
-           noPeasantDuel: !hr.peasantDuel,
            anchorKing: !hr.freeKing,
            extraDie: [!!hr.extraGreen, !!hr.extraGold],
            roundCap: hr.useRoundCap ? 60 : STALEMATE_CAP };
@@ -4674,7 +4669,7 @@ function testPosition(specs) {
   G = {
     v: 1, seed: 1, rng: 1,
     cfg: { setup: "basic", massiveInfantry: false, partialBases: true,
-           noPeasantDuel: true, anchorKing: true, roundCap: 60 },
+           anchorKing: true, roundCap: 60 },
     phase: "play", step: "test", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* Players belong here even though no test reads them: without the array
        any render of a test position throws, which makes __PH.ruleTests()
@@ -4894,7 +4889,7 @@ const RULE_TESTS = [
     return win.duel && win.removed === 1 && miss.removed === 0 && pan.panicSteps === 1 && !u[0].alive === false;
   }],
 
-  ["as printed, a lone Peasant gets no re-roll against armour", () => {
+  ["a lone Peasant gets no re-roll against armour", () => {
     const u = testPosition([
       { side: 0, type: "peasant", figs: 1, c: 4, r: 5, face: N },
       { side: 1, type: "knight", figs: 2, c: 4, r: 4, face: S },
@@ -4903,25 +4898,6 @@ const RULE_TESTS = [
     const res = attackWith(u[0], u[1]);
     /* One die, one hit, and armour needs two in the same attack. */
     return !res.duel && res.removed === 0;
-  }],
-
-  ["the lone-Peasant house rule grants the re-roll, scored by most-of", () => {
-    const mk = () => {
-      const u = testPosition([
-        { side: 0, type: "peasant", figs: 1, c: 4, r: 5, face: N },
-        { side: 1, type: "knight", figs: 2, c: 4, r: 4, face: S },
-      ]);
-      G.cfg.noPeasantDuel = false;          /* houseRulesToCfg: peasantDuel on */
-      return u;
-    };
-    let u = mk(); force([AXE, AXE]);
-    const both = attackWith(u[0], u[1]);
-    u = mk(); force([AXE, ARROW]);
-    const split = attackWith(u[0], u[1]);
-    /* Two axes is two hits and removes a Knight figure. One axe and one arrow
-       is "most of" = 1, which armour shrugs off. */
-    return both.duel && both.hits === 2 && both.removed === 1 &&
-           split.duel && split.hits === 1 && split.removed === 0;
   }],
 
   ["a Mercenary never panics; its victim about-faces and retreats once per PANIC", () => {
