@@ -379,18 +379,28 @@ body {
 .u.is-sel .base path { stroke: var(--sel); stroke-width: 3; }
 .u.is-sel { filter: drop-shadow(0 0 4px var(--sel)); }
 
-.u svg:not(.base) { width: 56%; height: 56%; margin-bottom: 16%; position: relative; }
-.u svg.fl path { fill: currentColor; }
-.u svg.ln path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.u svg:not(.base) { width: 52%; height: 52%; margin-bottom: 26%; position: relative; }
+/* evenodd, so a glyph can knock a detail out of itself -- the knight's eye. */
+.u svg.fl path { fill: currentColor; fill-rule: evenodd; }
+.u svg.ln path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* The figure count is the single most important number in the game -- it is
    at once the unit's toughness AND its dice pool -- so it is drawn, not
    merely implied. */
+/* Raised off the base's edge and sized with the square, so a full row
+   clears the border in every facing. At 2px off the bottom, a base turned
+   east or west put its shaved corner across the end of the row -- the
+   pips poked through the outline by up to 3px on a small board. Measured:
+   9.6px clear at 96px squares, 2.5px at 39px, the worst facing each time. */
 .u .pips {
-  position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
-  display: flex; gap: 1.5px;
+  position: absolute; bottom: calc(var(--sq) * 0.17); left: 50%; transform: translateX(-50%);
+  display: flex; gap: max(1px, calc(var(--sq) * 0.016));
 }
-.u .pips i { width: 4px; height: 5px; background: currentColor; }
+.u .pips i {
+  width: clamp(2.5px, calc(var(--sq) * 0.048), 5px);
+  height: clamp(3px, calc(var(--sq) * 0.058), 6px);
+  background: currentColor;
+}
 /* A spent figure reads as ABSENT, not as an outlined box: at 32px a 1px
    outline is indistinguishable from a fill, so the length of the bar has to
    carry the count. */
@@ -1984,10 +1994,18 @@ function commit() {
    ============================================================ */
 const UNIT_GLYPH = {
   king: "M3 17l1.6-9 4 4.4L12 4l3.4 8.4 4-4.4L21 17zM4 18.4h16V21H4z",
-  knight: "M8.6 3.4c3.4-1 7 .6 8.2 3.6 1.4 3.4-.4 6.4-2.6 8.4l1.4 5.6H6.6l1.2-4.8-3-1.6c-1.6-1-1.4-3 .4-3.6l2-.8-.6-3.4c-.2-1.6.8-2.8 2-3.4z",
+  /* The chess knight's horse head, the one silhouette everyone already
+     reads as "knight": ear, muzzle, an eye knocked out, a plinth under it.
+     The old head had no ear or muzzle and read as a boxing glove. */
+  knight: "M7.4 21V19.4C7.4 16.6 8.6 15 10.4 13.6L7.6 13.2 5.6 14.2C4.6 14.6 3.6 14.2 3.2 13.4L2.8 12.4C2.6 11.8 2.8 11.2 3.2 10.8L8.2 5.6 9.6 3.8 10.2 1.8 11.6 3.4C14.6 3.6 17.2 5.2 18.4 8.2 19.6 11.2 19.4 15 18.6 19.4V21ZM9.6 7.6a1.1 1.1 0 1 0 0 .01ZM5.4 22h14v1.4h-14z",
   heavy: "M12 2.6l8.4 3v6.2c0 5.4-4.2 8.8-8.4 9.8-4.2-1-8.4-4.4-8.4-9.8V5.6zM12 6v12",
   infantry: "M11 2.4h2l1.6 4.2v9.2h-5.2V6.6zM7.4 15h9.2v2.2H7.4zM11 17.8h2V22h-2z",
-  archer: "M7.4 2.6C11.8 5 13.6 8.8 13.6 12s-1.8 7-6.2 9.4l1.2-2.2c3-2 4.2-4.6 4.2-7.2s-1.2-5.2-4.2-7.2zM8.6 4.4l9 7.6-9 7.6",
+  /* A drawn bow on the diagonal, string pulled back and an arrow nocked
+     through it. The old arc-and-chevron had no string and no shaft, and
+     read as a boomerang; the diagonal is what gives the arrow room to be
+     an arrow at 18px. Set low in its box: centred, the arrowhead crowded
+     the base's shaved front corner. */
+  archer: "M5.2 7.8Q18.6 7 17.8 20.4M5.2 7.8L8.4 17.2 17.8 20.4M3.4 22.2L20.4 5.2M14.2 5.2H20.4V11.4",
   mercenary: "M12 2l2.4 5.2L12 9.6 9.6 7.2zM11 9.6h2V22h-2zM13 10.6h6.4v4.4H13z",
   peasant: "M5.4 2.6v6.2M9.6 2.6v6.2M13.8 2.6v6.2M4 8.8h11.2M9.2 8.8V22",
 };
