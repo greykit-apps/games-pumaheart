@@ -4561,8 +4561,13 @@ function combatOutcome(res) {
 function tumbleInto(dice, sf, onAllSettled) {
   const glyphs = [DIE_GLYPH[AXE], DIE_GLYPH[ARROW], DIE_GLYPH[PANIC]];
   const finals = dice.map(d => d.innerHTML);
+  /* A die in the air has no outcome yet, so it carries none: its face, its
+     scoring and whether the house rule sets it aside are all withheld until
+     it lands. Left on, ".scores" outranked ".rolling" and a scoring die
+     tumbled in green -- the result readable before a single die had stopped. */
+  const outcome = dice.map(d => d.className);
   dice.forEach((die, i) => {
-    die.classList.add("rolling");
+    die.className = "bigdie rolling";
     die.setAttribute("aria-busy", "true");
     const spin = setInterval(() => {
       const g = glyphs[Math.floor(Math.random() * 3)];   // flavour only, never rules
@@ -4571,7 +4576,7 @@ function tumbleInto(dice, sf, onAllSettled) {
     setTimeout(() => {
       clearInterval(spin);
       die.innerHTML = finals[i];
-      die.classList.remove("rolling");
+      die.className = outcome[i];
       die.removeAttribute("aria-busy");
       die.classList.add("settled");
       sfx("tick");
