@@ -1094,14 +1094,21 @@ function deployBasic(side) {
   for (const c of [2, 3, 4, 5, 6]) G.units.push(makeUnit(side, "infantry", 4, c, front, face));
 }
 
+/* The settings a game is played under. opts may carry more than these --
+   specs, humanSide, skill -- which shape the setup but are not rules. */
+const CFG_KEYS = ["setup", "opponent", "massiveInfantry", "partialBases", "anchorKing", "extraDie", "roundCap"];
+
 function newGame(seed, opts) {
+  opts = opts || {};
+  const cfg = { setup: "basic", opponent: "ai",
+                massiveInfantry: false, partialBases: false, anchorKing: true,
+                extraDie: [false, false], roundCap: STALEMATE_CAP };
+  for (const k of CFG_KEYS) if (opts[k] !== undefined) cfg[k] = opts[k];
   G = {
     v: 1, seed: seed, rng: seed,
-    /* roundCap is NOT a printed rule. It exists only so headless sims
-       terminate, and is off (0) in human play. */
-    cfg: { setup: (opts && opts.setup) || "basic", opponent: "ai",
-           massiveInfantry: false, partialBases: false, anchorKing: true,
-           extraDie: [false, false], roundCap: STALEMATE_CAP },
+    /* roundCap is NOT a printed rule. It is a stalemate backstop, 200 in
+       human play, and the headless sims set it lower so they terminate. */
+    cfg,
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
     /* p.2: "There are two armies -- one gold, one silver." Gold is gold here.
        Silver is not: the palette renders side 0 in green, and a side named
@@ -1113,6 +1120,16 @@ function newGame(seed, opts) {
     ],
     units: [], botPlan: [], dice: null, log: [], gameOver: false, result: null, nextUid: 1,
   };
+  /* Who is a bot, and how well it plays, is settled BEFORE the armies are
+     drawn: the AI's muster and its opening are both picked here. Setting them
+     afterwards left every AI drawing its opening at the default difficulty
+     and mustering under the default rules -- a Massive Infantry game against
+     an army of four-man bases. */
+  const human = opts.humanSide === 1 ? 1 : 0;
+  for (const side of [0, 1]) {
+    G.players[side].isBot = cfg.opponent !== "hotseat" && side !== human;
+    if (G.players[side].isBot && opts.skill != null) G.players[side].skill = +opts.skill;
+  }
   if (G.cfg.setup === "custom") {
     for (const side of [0, 1]) {
       const spec = (opts && opts.specs && opts.specs[side]) || botMuster(side, seed + side * 7919);
@@ -1410,7 +1427,13 @@ function panicRetreat(P, u, steps, depth, trace) {
     if (occ) {
       const blocked = occ.side !== u.side || occ.type === "king" || occ.type === "mercenary";
       if (blocked) { u.alive = false; u.figs = 0; rec(true); return; }
+      const fromC = u.c, fromR = u.r;
       panicRetreat(P, occ, 1, (depth || 0) + 1, trace);
+      /* The ally about-faces, so it can run straight back into this unit and
+         panic it again -- moving it or killing it. Either way its own retreat
+         is over: stepping on from a square it has already left put it two
+         squares away, through the ally, and walked the dead. */
+      if (!u.alive || u.c !== fromC || u.r !== fromR) return;
       if (occ.alive && occ.c === s.c && occ.r === s.r) return;   /* ally could not clear */
     }
     u.c = s.c; u.r = s.r;
@@ -1442,16 +1465,31 @@ function canBribe(P, grid, king, merc) {
 
 function applyBribe(P, king, merc) {
   merc.side = king.side;                 /* the pennant changes, nothing else */
+  /* It has not attacked for its new side, whatever it did for the old one.
+     The flag is only reset for the side about to move, so left alone it
+     carried over from the previous owner's turn: a Mercenary that had
+     attacked then could not attack now, and one that had not, could. The
+     rules are silent on whether it may act at once; it may. */
+  merc.attackedThisTurn = false;
   return merc;
 }
 
 /* p.8: win by eliminating the King, OR by leaving the rival's King
-   standing ALONE on the field -- not by wiping the whole army. */
+   standing ALONE on the field -- not by wiping the whole army.
+
+   One attack can do both at once: Peasants kill the enemy King and then
+   panic off the board, leaving their own King alone. A dead King is the
+   harder fact, so both sides are checked for one before either is checked
+   for the other -- checking side by side once gave the game to Gold with
+   its King dead. Where both Kings are left alone together the rules are
+   silent; the side whose action did it wins. */
 function checkVictory(P) {
   for (const side of [0, 1]) {
     if (!kingOf(P, side)) return { winner: 1 - side, reason: "king" };
-    if (livingOf(P, side).length === 1) return { winner: 1 - side, reason: "alone" };
   }
+  const alone = [0, 1].filter(side => livingOf(P, side).length === 1);
+  if (alone.length === 2) return { winner: P.turn, reason: "alone" };
+  if (alone.length === 1) return { winner: 1 - alone[0], reason: "alone" };
   return null;
 }
 
@@ -1785,9 +1823,24 @@ const COACH_KEY = "pumaheart_coach_v1";
 const MUTED_KEY = "pumaheart_muted_v1";
 const SPEED_KEY = "pumaheart_speed_v1";
 
-function saveGame() {
-  if (!G || G.gameOver || UI.headless) return;
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, G })); }
+/* `pending` is an animation queue about to play. Its field-report lines are
+   written into the save now, because a reload part-way through would
+   otherwise come back without them -- the dice of the attack it was showing,
+   gone from the record. */
+function saveGame(pending) {
+  if (!G || UI.headless) return;
+  /* A finished game is not a position to come back to. Left in place, a
+     reload brought the battle back to just before the deciding blow. */
+  if (G.gameOver) { clearSave(); return; }
+  let snap = G;
+  if (pending) {
+    snap = clone(G);
+    for (const e of pending) {
+      if (e.type === "log") pushLog(snap, e.text);
+      else if (e.type === "logAttack") pushLog(snap, attackEntry(e.res, e.say));
+    }
+  }
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, G: snap })); }
   catch (e) { /* quota or private mode -- the game still plays, it just won't resume */ }
 }
 function loadSave() {
@@ -1805,7 +1858,8 @@ function resumeGame(saved) {
   G = saved;
   UI.entering = false; UI.sel = null; UI.undo = []; UI.rects = null;
   UI.cur = idx(4, H - 1);
-  log("Battle resumed.");
+  /* Once, however often the tab is reloaded. */
+  if (G.log[G.log.length - 1] !== "Battle resumed.") log("Battle resumed.");
   updateAll();
   advance();
 }
@@ -1838,6 +1892,12 @@ function animate(events) {
     }
     return NEXT;
   }
+  /* G is already final here: whatever is about to play out over the board
+     has happened. Saving waited for advance() to finish, which never happens
+     mid-animation -- so a reload during the AI's turn, or during your own
+     dice, came back to before the action, and let you see a roll and then
+     choose something else. */
+  saveGame(events);
   UI.eventQueue = events.concat([{ type: "callback", fn: advance }]);
   UI.animating = true;
   processEventQueue();
@@ -1901,6 +1961,11 @@ const STEP = {
       }
       endTurn(G);
       G.botPlan = [];
+      /* Whatever ended the turn -- the button, or the last action spent --
+         nothing before it can be taken back. Only the button cleared this,
+         so a turn that simply ran out left its orders on the stack, and Z
+         on the next one rewound the whole of the other side's turn. */
+      UI.undo = []; UI.lastTurn = null;
       if (G.cfg.opponent === "hotseat" && isHuman(G.turn)) { go("play", "handoff"); return NEXT; }
       go("play", "begin"); return NEXT;
     },
@@ -2386,22 +2451,27 @@ function renderLog() {
                             : `<li class="log-attack">${attackEntryHTML(l)}</li>`).join("");
 }
 
+function pushLog(P, entry) {
+  P.log.push(entry);
+  if (P.log.length > 200) P.log.shift();
+}
 function log(msg) {
-  G.log.push(msg);
-  if (G.log.length > 200) G.log.shift();
+  pushLog(G, msg);
   announce(msg);
 }
 
 /* The structured entry. `say` is the same line in words, for the screen
    reader and for any entry whose units have since left G. */
-function logAttack(res, say) {
-  G.log.push({
+function attackEntry(res, say) {
+  return {
     atk: res.atkUid, def: res.defUid, faces: res.faces.slice(),
     lost: figuresLost(res), killed: !!res.killed,
     panic: !!res.panicSteps, duel: !!res.duel,
     dropped: (res.dropped || []).slice(), say: say,
-  });
-  if (G.log.length > 200) G.log.shift();
+  };
+}
+function logAttack(res, say) {
+  pushLog(G, attackEntry(res, say));
   announce(say);
 }
 
@@ -2791,7 +2861,24 @@ function faceSelected(face) {
     if (deployFace(sel, face)) updateAll();
     return;
   }
-  tryAction({ kind: "turn", uid: sel.uid, face });
+  /* p.4: "A Turn in any direction (including an about-face) counts as one
+     action." The handles and the touch bar turn a quarter at a time, which
+     made an about-face cost two by mouse and put it out of a Heavy
+     Infantry's reach altogether. So a second quarter on the same unit,
+     before anything else has happened, revises the first turn rather than
+     paying for another -- and turning back to where it started withdraws
+     the order. */
+  const lt = UI.lastTurn;
+  if (lt && myTurn() && lt.uid === sel.uid && lt.turn === G.turn && lt.round === G.round &&
+      lt.depth === (UI.undo || []).length && lt.left === G.actionsLeft) {
+    const was = byUid(UI.undo[UI.undo.length - 1], sel.uid).face;
+    G = UI.undo.pop();
+    UI.lastTurn = null;
+    if (face === was) { updateAll(); return; }
+  }
+  if (tryAction({ kind: "turn", uid: sel.uid, face })) {
+    UI.lastTurn = { uid: sel.uid, turn: G.turn, round: G.round, depth: UI.undo.length, left: G.actionsLeft };
+  }
 }
 
 /* Attack ahead: fires when exactly one target is legal, otherwise parks the
@@ -2888,7 +2975,11 @@ const ACTS = {
   coachGot: el => coachDismiss(el.dataset.id),
   /* Same opponent, same difficulty, same house rules -- a rematch, not a
      trip back through the setup screen. */
-  again: () => { clearSave(); openMuster(0); },
+  again: () => { clearSave(); UI.humanSide = humanSideOf(); openMuster(UI.humanSide); },
+  /* The same game from the other side of the table: same opponent, same
+     difficulty, same house rules, the other army. It used to open the New
+     game menu, which has no side to choose. */
+  changeSides: () => { clearSave(); UI.humanSide = 1 - humanSideOf(); openMuster(UI.humanSide); },
   newGame: () => { clearSave(); startGame(); },
 };
 
@@ -2979,10 +3070,9 @@ function startGame(seed, opts) {
   UI.entering = true; UI.lastSel = null; UI.lastActions = null; UI.lastTurnKey = null;
   UI.aim = null; UI.preAttack = null; UI.openingShown = null; UI.openingIdx = null;
   for (const g of document.querySelectorAll(".ghost")) g.remove();
-  newGame(seed == null ? Math.floor(Math.random() * 1e9) : seed, opts);
-  Object.assign(G.cfg, opts || {});
-  if (G.cfg.opponent === "hotseat") G.players[1].isBot = false;
-  else G.players[1].skill = UI.pendingSkill != null ? +UI.pendingSkill : 1;
+  newGame(seed == null ? Math.floor(Math.random() * 1e9) : seed,
+    Object.assign({ humanSide: UI.humanSide || 0,
+                    skill: UI.pendingSkill != null ? +UI.pendingSkill : 1 }, opts || {}));
 
   /* The Basic Game's opening is printed and fixed. A customised army gets the
      secret battle plan, which is where the strategy lives. */
@@ -2999,9 +3089,14 @@ function startGame(seed, opts) {
     updateAll();
     return;
   }
-  UI.cur = idx(4, H - 1);
+  UI.cur = idx(4, humanSideOf() === 1 ? 0 : H - 1);
   log("The armies take the field.");
   advance();
+}
+
+/* The army a human plays, for a game against the AI; Green in hot-seat. */
+function humanSideOf() {
+  return G && G.players && G.players[0].isBot && !G.players[1].isBot ? 1 : 0;
 }
 
 /* ============================================================
@@ -3210,7 +3305,7 @@ function applyQuiet(P, a) {
   if (a.kind === "turn") { u.face = a.face; return; }
   if (a.kind === "bribe") {
     u.attackedThisTurn = true;
-    P.units.find(x => x.uid === a.defUid).side = u.side;
+    applyBribe(P, u, P.units.find(x => x.uid === a.defUid));
     return;
   }
   const def = P.units.find(x => x.uid === a.defUid);
@@ -3599,6 +3694,11 @@ function botMuster(side, pickSeed) {
       peasant: { bases: 2, figs: 2 }, mercenary: { bases: 1, figs: 2 } },
     /* The printed basic army, unchanged. */
     basicSpec(),
+    /* Massive Infantry: all twenty foot on two ten-man bases. Legal only
+       under that rule, so it is filtered out of every other game. */
+    { knight: { bases: 2, figs: 2 }, archer: { bases: 2, figs: 4 },
+      infantry: { bases: 2, figs: 10 }, heavy: { bases: 1, figs: 2 },
+      peasant: { bases: 1, figs: 4 }, mercenary: { bases: 1, figs: 2 } },
   ];
   const legal = candidates.filter(c => validateArmy(c, G.cfg) === null);
   const pool = legal.length ? legal : [basicSpec()];
@@ -3973,7 +4073,7 @@ function menuBegin() {
   UI.pendingSkill = m.skill;
   UI.houseRules = Object.assign(defaultHouseRules(), m.house);
   UI.musterSpecs = null;
-  openMuster(0);
+  openMuster(m.opponent === "hotseat" ? 0 : (UI.humanSide || 0));
 }
 
 function renderMenu() {
@@ -4005,7 +4105,7 @@ function renderMenu() {
       <summary data-act="menuAdvanced">House rules
         <span class="dim">&mdash; all off, so this is the printed game</span></summary>
       <p class="prov-head">Off is Larry Harris's game as written. Each switch is an override:
-        three of ours, and one the rulebook offers itself.</p>
+        four of ours, and one the rulebook offers itself.</p>
       <ul class="house">${house}</ul>
     </details>
     <div class="muster-actions">
@@ -4089,8 +4189,8 @@ function renderHelp() {
        attack rings in red &mdash; click a ring to act. Or just <b>drag the base</b> where you
        want it and let go, which is the same two decisions with the button held down. The small
        curved arrows in a selected base's front corners turn it a quarter turn each way, and
-       turning costs an action like the rest. Everything below is a shortcut for something you
-       can click.</p>
+       turning costs an action like the rest &mdash; one action however far it turns, so click
+       twice for an about-face. Everything below is a shortcut for something you can click.</p>
 
     <h3>Keys</h3>
     <table class="ref keys">${keys}</table>
@@ -4178,7 +4278,7 @@ function renderOver() {
     <dl class="over-count">${rows}</dl>
     <div class="muster-actions">
       <button class="btn btn-go" data-act="again" autofocus>Play again</button>
-      <button class="btn" data-act="menuOpen">Change sides</button>
+      ${G.cfg.opponent === "hotseat" ? "" : `<button class="btn" data-act="changeSides">Change sides</button>`}
     </div>
   </div>`;
 }
@@ -4694,6 +4794,64 @@ function attackWith(atk, def) {
 function at(c, r) { return unitAt(G, buildGrid(G), c, r); }
 
 const RULE_TESTS = [
+  ["a King killed by an attack that leaves the attacker's King alone still loses", () => {
+    testPosition([
+      { side: 0, type: "king", figs: 1, c: 0, r: 7, face: N },
+      { side: 0, type: "peasant", figs: 3, c: 4, r: 5, face: N },
+      { side: 1, type: "king", figs: 1, c: 4, r: 4, face: S },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 6, face: N },
+    ]);
+    force([AXE, AXE, PANIC]);
+    const [, pz, gk] = G.units;
+    attackWith(pz, gk);
+    /* Two axes kill the King; the PANIC runs the Peasants into the Gold
+       Infantry behind them, and Green is left with its King alone. */
+    const v = checkVictory(G);
+    return !gk.alive && !pz.alive && v && v.winner === 0 && v.reason === "king";
+  }],
+
+  ["when both Kings are left alone together, the side that acted wins", () => {
+    testPosition([
+      { side: 0, type: "king", figs: 1, c: 0, r: 7, face: N },
+      { side: 0, type: "peasant", figs: 2, c: 4, r: 5, face: N },
+      { side: 1, type: "king", figs: 1, c: 4, r: 6, face: N },
+      { side: 1, type: "infantry", figs: 1, c: 4, r: 4, face: S },
+    ]);
+    force([AXE, PANIC]);
+    const [, pz, , gi] = G.units;
+    attackWith(pz, gi);
+    G.turn = 0;
+    const v = checkVictory(G);
+    return !gi.alive && !pz.alive && v && v.winner === 0 && v.reason === "alone";
+  }],
+
+  ["a panic that bounces off an about-faced ally stops where the bounce left it", () => {
+    testPosition([
+      { side: 0, type: "archer", figs: 4, c: 4, r: 4, face: N },
+      { side: 0, type: "infantry", figs: 4, c: 4, r: 5, face: S },
+      { side: 1, type: "infantry", figs: 4, c: 4, r: 1, face: S },
+    ]);
+    force([PANIC, PANIC, PANIC, PANIC]);
+    const [ar, inf] = G.units;
+    attackWith(ar, G.units[2]);
+    /* The Archer runs into the Infantry, which about-faces into the Archer,
+       which panics again and steps forward. It must stay there -- not jump
+       back two squares through the Infantry. */
+    return ar.alive && ar.c === 4 && ar.r === 3 && inf.c === 4 && inf.r === 4;
+  }],
+
+  ["a bribed Mercenary has not attacked for its new side, whatever it did for the old", () => {
+    testPosition([
+      { side: 0, type: "king", figs: 1, c: 4, r: 5, face: N },
+      { side: 1, type: "mercenary", figs: 2, c: 4, r: 4, face: S },
+      { side: 1, type: "king", figs: 1, c: 0, r: 0, face: S },
+    ]);
+    const [k, m] = G.units;
+    m.attackedThisTurn = true;              /* it attacked on Gold's last turn */
+    applyAction(G, { kind: "bribe", uid: k.uid, defUid: m.uid });
+    return m.side === 0 && m.attackedThisTurn === false;
+  }],
+
   ["mounted units stop before a blocker and may halt anywhere short of it", () => {
     const [kn] = testPosition([
       { side: 0, type: "knight", figs: 2, c: 4, r: 7, face: N },
