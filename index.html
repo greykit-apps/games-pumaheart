@@ -4,23 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PumaHeart — Medieval Grid Wargame</title>
-<meta name="description" content="A faithful port of Lionheart (1997). Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta name="description" content="A medieval tactics game. Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta name="theme-color" content="#05070f">
 <meta name="color-scheme" content="dark">
 <meta name="referrer" content="no-referrer">
 <meta property="og:title" content="PumaHeart">
-<meta property="og:description" content="A faithful port of Lionheart (1997). Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta property="og:description" content="A medieval tactics game. Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://greykit.com/games/pumaheart/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="A faithful port of Lionheart (1997). Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta property="og:image:alt" content="A medieval tactics game. Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta property="og:url" content="https://greykit.com/games/pumaheart/">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="PumaHeart">
-<meta name="twitter:description" content="A faithful port of Lionheart (1997). Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta name="twitter:description" content="A medieval tactics game. Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <meta name="twitter:image" content="https://greykit.com/games/pumaheart/og.png">
-<meta name="twitter:image:alt" content="A faithful port of Lionheart (1997). Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
+<meta name="twitter:image:alt" content="A medieval tactics game. Gold against Green on nine squares by eight, two actions a turn. Facing matters, dice decide, and a panicking unit will shove your own line off the board.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
@@ -144,9 +144,9 @@ body {
   color: var(--steel);
 }
 
-/* Progressive disclosure, native. The house rules and their notes on where the 1997 rulebook is silent -- which is the port's whole argument,
-   and exactly the wrong thing to hand someone who has never heard of
-   Lionheart at the moment they are trying to start a game. */
+/* Progressive disclosure, native. The house rules and their notes are
+   exactly the wrong thing to hand a first-time player at the moment they
+   are trying to start a game. */
 .disclose { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
 .disclose > summary {
   cursor: pointer; color: var(--dim); list-style: none;
@@ -768,7 +768,7 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 .bigdie.rolling { color: var(--dim); border-color: var(--line); animation: rollShake 150ms linear infinite; }
 .bigdie.settled { animation: dieLand 300ms var(--ease-out-expo); }
 
-/* Each die names its face. The player has never seen the box, and the rules
+/* Each die names its face. The player has never played before, and the rules
    hang on which face came up -- Archers score arrows, Peasants count piles,
    all PANIC is a rout -- so a glyph alone asked them to learn an alphabet
    mid-fight. The caption is withheld while the die is in the air, exactly
@@ -959,22 +959,13 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 
 <script>
 /* ============================================================
-   RULE TABLES — transcribed from the official rulebook scan
-   (Parker Brothers 40742-I, 1997). Every number here is PRINTED.
-   Nothing is designed, costed or balanced by us. The Gameplay
-   Reference Table is on p.8; setup and dice labels on pp.2-3.
-   If a value here disagrees with your copy, this table is the
-   one place to change it.
+   RULE TABLES — every number the rules depend on lives here,
+   and this is the one place to change it. There is no points
+   system, no army costs and no rebalancing.
    ============================================================ */
 
-/* The board. 9 wide is printed -- countable in the p.3 setup diagram,
-   which reads [blank][blank] Archers Knights King Knights Archers
-   [blank][blank]. 8 deep is not printed anywhere; it was counted on the
-   physical board and corroborated four further ways, the neatest being
-   that the board's fold bisects the centre column, which is only
-   possible if the column count is odd. Every online source says 9x10,
-   traceable to one hedged line in a 1998 InQuest Gamer review. It is
-   wrong. Only four empty ranks separate the armies. */
+/* The board: 9 files by 8 ranks. Only four empty ranks separate the
+   armies, so contact arrives almost immediately. */
 const W = 9, H = 8;
 
 /* Facing is an integer 0..3. Rotation is (face + k) % 4, and an
@@ -983,16 +974,13 @@ const N = 0, E = 1, S = 2, WEST = 3;
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 const FACE_NAMES = ["north", "east", "south", "west"];
 
-/* "Each gets 2 Arrows, one PANIC and 3 Battle-axes." (p.2) */
+/* Each die: 3 battle-axes, 2 arrows, 1 PANIC. */
 const AXE = 0, ARROW = 1, PANIC = 2;
 const DIE_FACES = [AXE, AXE, AXE, ARROW, ARROW, PANIC];
 
-/* p.8 Gameplay Reference Table. perBase is the printed maximum:
-   the rulebook prints fixed counts for basic units and ranges for
-   specials ("1 or 2", "up to 4"), but calls 4 "the standard limit
-   of 4 Infantry per base", so we read them all as maxima. A base is still
-   fielded full: under-filling one is the "Bases may be under-filled" house
-   rule (README, "What's approximated", point 2). */
+/* The warriors. perBase is the most figures a base can hold. A base is
+   still fielded full: under-filling one is the "Bases may be under-filled"
+   house rule. */
 const UNIT_DEFS = {
   king: {
     name: "King", perPlayer: 1, perBase: 1, dicePerFig: 2,
@@ -1032,11 +1020,11 @@ const UNIT_DEFS = {
   },
 };
 
-/* Optional printed rule (p.8): 10 Infantry per base, never more than
-   4 dice. Off by default -- "If both players agree". */
+/* Optional rule: 10 Infantry per base, never more than 4 dice. Off by
+   default. */
 const MASSIVE_INFANTRY = { perBase: 10, maxDice: 4 };
 
-/* How many figures fit on a base RIGHT NOW. The printed optional rule (p.8)
+/* How many figures fit on a base RIGHT NOW. The Massive Infantry rule
    raises Infantry from 4 to 10, and this is the single place that knows it:
    the muster, the validator, the invariants and the figure pips all read
    through here. */
@@ -1046,12 +1034,12 @@ function perBaseOf(type, cfg) {
   return UNIT_DEFS[type].perBase;
 }
 
-/* The box holds exactly 4 combat dice, and no unit can roll more.
+/* No unit ever rolls more than 4 dice.
    king 1x2, knight 2x2, infantry 4x1, archer 4x1, heavy 2x2,
    peasant 4x1, mercenary 2x2 -- every one lands on 4. */
 const MAX_DICE = 4;
 
-/* p.3 Basic Game Setup: 10 bases, 33 warriors. */
+/* The standard army: 10 bases, 33 warriors. */
 const BASIC_ARMY = [
   { type: "king", bases: 1, figs: 1 },
   { type: "knight", bases: 2, figs: 2 },
@@ -1059,7 +1047,7 @@ const BASIC_ARMY = [
   { type: "infantry", bases: 5, figs: 4 },
 ];
 
-/* p.6 Customized Setup: still exactly 10 bases; these cap the specials. */
+/* A customised army: still exactly 10 bases; these cap the specials. */
 const BASES_TOTAL = 10;
 const CUSTOM_BASE_CAPS = { heavy: 2, peasant: 4, mercenary: 1 };
 
@@ -1107,10 +1095,9 @@ const DICE_DIST = (function buildDiceDist() {
 })();
 
 /* The face a roll scores with, or null when it scores nothing. Every unit
-   but the Peasant has one hit face. Peasants count "whichever you rolled the
-   most of -- Battle-axes or Arrows (or PANICs)" (p.6): when PANIC is the
-   face they rolled most of, they panic and do not hit. A tie goes to the
-   hits -- the printed example has the player choosing which pile to count.
+   but the Peasant has one hit face. Peasants count whichever face they
+   rolled the most of: when PANIC is the face they rolled most of, they
+   panic and do not hit. A tie goes to the hits.
    Each PANIC still costs a retreat either way; that is panicsFrom()'s job.
    The dice resolution, the AI's expectation, and the green on the dice in
    the cut-in and the field report all ask this one function. */
@@ -1129,7 +1116,7 @@ function hitsFrom(def, axes, arrows, panics) {
   return f === AXE ? axes : f === ARROW ? arrows : 0;
 }
 
-/* Total panic iff EVERY die says PANIC (p.5). Peasants instead
+/* Total panic iff EVERY die says PANIC. Peasants instead
    retreat once per PANIC die, and Kings and Mercenaries never
    panic at all. */
 function panicsFrom(def, panics, n) {
@@ -1162,7 +1149,7 @@ function makeUnit(side, type, figs, c, r, face) {
   return { uid: G.nextUid++, side, type, figs, c, r, face, alive: true, attackedThisTurn: false };
 }
 
-/* p.3: King centre of the back row, Knights either side of the King,
+/* The standard opening: King centre of the back row, Knights either side of the King,
    Archers either side of the Knights, 5 Infantry directly in front. */
 function deployBasic(side) {
   const back = side === 0 ? H - 1 : 0;
@@ -1186,14 +1173,11 @@ function newGame(seed, opts) {
   for (const k of CFG_KEYS) if (opts[k] !== undefined) cfg[k] = opts[k];
   G = {
     v: 1, seed: seed, rng: seed,
-    /* roundCap is NOT a printed rule. It is a stalemate backstop, 200 in
+    /* roundCap is not a game rule. It is a stalemate backstop, 200 in
        human play, and the headless sims set it lower so they terminate. */
     cfg,
     phase: "play", step: "begin", round: 1, turn: 0, actionsLeft: 2, first: 0,
-    /* p.2: "There are two armies -- one gold, one silver." Gold is gold here.
-       Silver is not: the palette renders side 0 in green, and a side named
-       for a colour it is plainly not is worse than a side named for what
-       the player can see. */
+    /* Each side is named for the colour the player can see. */
     players: [
       { id: 0, army: "green", name: "Green", isBot: false, skill: 1, losses: 0 },
       { id: 1, army: "gold", name: "Gold", isBot: true, skill: 1, losses: 0 },
@@ -1215,7 +1199,7 @@ function newGame(seed, opts) {
       const spec = (opts && opts.specs && opts.specs[side]) || botMuster(side, seed + side * 7919);
       G.players[side].spec = spec;
       /* A human's line is laid by hand in the deploy phase and this is only
-         its starting shape, so it always gets the printed one. A bot's is
+         its starting shape, so it always gets the standard one. A bot's is
          drawn from the library at its own skill. */
       const op = G.players[side].isBot
         ? pickOpening(G.players[side].skill, seed + side * 104729)
@@ -1228,9 +1212,8 @@ function newGame(seed, opts) {
     deployBasic(0);
     deployBasic(1);
   }
-  /* p.4: "Each player rolls all 4 Combat dice. The player who rolls the
-     most Battle-axes will go first." Ties are not addressed by the rules;
-     we re-roll (README, "What's approximated", point 3). */
+  /* Each side rolls 4 dice; the most battle-axes goes first. Ties
+     re-roll. */
   for (;;) {
     const a = rollDice(4).kept.filter(f => f === AXE).length;
     const b = rollDice(4).kept.filter(f => f === AXE).length;
@@ -1269,10 +1252,10 @@ function kingOf(P, side) {
 }
 function defOf(u) { return UNIT_DEFS[u.type]; }
 
-/* p.4: "A unit may only move in the direction its warriors are facing."
-   Foot moves 1 square per action; Kings and Knights "move as far as they
-   want... They stop if blocked by a friendly or enemy unit." A mounted
-   unit may stop at ANY distance, not only the maximum. */
+/* A unit moves only in the direction it faces. Foot moves 1 square per
+   action; Kings and Knights ride as far as they like until blocked by a
+   friendly or enemy unit. A mounted unit may stop at ANY distance, not only
+   the maximum. */
 function moveSquares(P, grid, u) {
   const out = [];
   const max = defOf(u).mounted ? Math.max(W, H) : 1;
@@ -1292,19 +1275,17 @@ function actionCost(u, kind) {
   return (kind === "move" ? d.moveCost : d.turnCost) || 1;
 }
 
-/* p.5: "Archers attack units within the block of 9 squares directly in
-   front of them" and "may fire over the heads of units in front of them
-   and attack any single enemy unit within the 9 squares." The block is
-   3 wide x 3 deep and starts immediately in front. There is no
+/* Archers attack any single enemy in the block of 9 squares directly in
+   front of them, firing over the heads of anything in between. The block
+   is 3 wide x 3 deep and starts immediately in front. There is no
    line-of-fire rule -- arrows pass over friend and foe alike.
 
-   Heavy Infantry (p.6) "may attack any adjacent square -- forwards,
-   sideways, diagonally or to the back... the only unit that does not
-   have to face its enemy in order to attack."
+   Heavy Infantry may attack any adjacent square, diagonals and rear
+   included -- the only unit that need not face its enemy to attack.
 
-   Everyone else (p.4): "You must be next to and facing the unit you are
-   attacking. You may attack from the side or rear!" -- the DEFENDER's
-   facing is irrelevant, so there is no flanking rule. */
+   Everyone else must be next to and facing the unit they attack, and may
+   attack from its side or rear -- the DEFENDER's facing is irrelevant, so
+   there is no flanking rule. */
 function attackZone(u) {
   const d = defOf(u);
   const out = [];
@@ -1337,8 +1318,8 @@ function attackTargets(P, grid, u) {
     .filter(t => t && t.side !== u.side);
 }
 
-/* "The number of dice you roll depends on the type of unit and how many
-   figures are on it." The box holds 4 dice and nothing can exceed that. */
+/* Dice rolled depend on the unit type and how many figures are on it,
+   and nothing ever rolls more than 4. */
 function diceFor(u) {
   const d = defOf(u);
   const per = (G && G.cfg.massiveInfantry && u.type === "infantry") ? MASSIVE_INFANTRY.maxDice : MAX_DICE;
@@ -1355,12 +1336,12 @@ function diceFor(u) {
    there. A Peasant has no single hit face, scoring with whichever symbol it
    rolled the most of, so for it the losing pile is the smaller one.
 
-   The unit's DICE POOL is untouched: diceFor() still returns what the
-   rulebook prints, so the box-has-four-dice invariant holds. This adds a
-   throw, not a die to the base.
+   The unit's DICE POOL is untouched: diceFor() still returns the standard
+   count, so the four-dice invariant holds. This adds a throw, not a die to
+   the base.
 
    Neither side's planner is told. DICE_DIST stays the exact distribution of
-   the printed die, so an AI with the extra die plays the same game and comes
+   the standard die, so an AI with the extra die plays the same game and comes
    off better, and the search stays a load-time constant. */
 function dropWorstDie(faces, hitFace) {
   const axes = faces.filter(f => f === AXE).length;
@@ -1399,11 +1380,9 @@ function rollDice(n, side, hitFace) {
   return dropWorstDie(rolled, hitFace);
 }
 
-/* p.5 last-man rule: a single Infantry or Archer attacking a target that
+/* Last-man rule: a single Infantry or Archer attacking a target that
    needs two hits rolls one die, and on a hit rolls that die again. A PANIC
-   either time panics the attacker. */
-/* p.5 prints this for Infantry, and extends it to Archers in the Archer note.
-   It is never extended to Peasants, and they do not get it -- they are
+   either time panics the attacker. Peasants do not get it -- they are
    peasants. A lone one rolls its single die against armour and cannot score
    the two hits it needs. */
 function needsLastManDuel(atk, def) {
@@ -1465,17 +1444,15 @@ function resolveAttack(P, grid, atk, def) {
     }
   }
 
-  /* "If it's not a total panic, disregard the PANICs you rolled." A TOTAL
-     panic takes the hits with it -- which is vacuous for most units, since
-     every die must read PANIC for it to happen, so there are no hits to lose.
-     Peasants are the exception: they panic per die and KEEP their hits.
-     Rulebook p.6, verbatim: "You roll 4 dice and they come up 2 Battle-axes,
-     1 Arrow and 1 PANIC. You choose the Battle-axes (= 2 hits) AND you
-     observe the PANIC." */
+  /* Short of a total panic, PANICs are ignored. A TOTAL panic takes the
+     hits with it -- which is vacuous for most units, since every die must
+     read PANIC for it to happen, so there are no hits to lose. Peasants are
+     the exception: they panic per die and KEEP their hits. Two axes, an
+     arrow and a PANIC is two hits AND a one-square retreat. */
   if (res.panicSteps && !ad.panicPerDie) { res.hits = 0; return res; }
 
-  /* "remove 1 figure ... for every Battle-ax"; a Knight, King or Heavy
-     Infantry "must be hit twice in the same Attack to be eliminated". */
+  /* One figure lost per hit; a Knight, King or Heavy Infantry figure
+     needs two hits in the same attack. */
   res.removed = Math.floor(res.hits / defOf(def).htk);
   return res;
 }
@@ -1487,14 +1464,14 @@ function applyRemoval(P, def, count) {
   return false;
 }
 
-/* p.5 PANIC. Blocked retreats ELIMINATE rather than fizzle, so every case
+/* PANIC. Blocked retreats ELIMINATE rather than fizzle, so every case
    resolves and there is no invalid chain to roll back:
      - off the board            -> the retreating unit is eliminated
      - into an enemy            -> the retreating unit is eliminated
      - into your own King       -> the retreating unit is eliminated
-     - into a Mercenary         -> the retreating unit is eliminated (p.7)
+     - into a Mercenary         -> the retreating unit is eliminated
      - into your own other unit -> that unit also panics, and the chain
-                                   continues. "Watch out for chain reactions!" */
+                                   continues. */
 function panicRetreat(P, u, steps, depth, trace) {
   if (!u.alive || !defOf(u).panics) return;
   if ((depth || 0) > 64) return;                 /* cycles are impossible, but never trust that */
@@ -1523,16 +1500,11 @@ function panicRetreat(P, u, steps, depth, trace) {
   }
 }
 
-/* p.7 King vs. Mercenary: "If your King moves into Attack position facing
-   your enemy's Mercenary unit, your King's next action (if he has one left)
-   is to bribe the Mercenary so he changes sides. You do not need to roll the
-   Combat dice... The Mercenary unit is now on your side!"
-   "Exception: A Mercenary cannot be bribed if he is adjacent to AND being
-   faced by his own King -- because the King is watching him!"
-
-   Read as replacing the King's attack rather than as an extra action: the
-   rulebook says the King's action IS to bribe, and that no dice are rolled.
-   A Mercenary under its own King's eye is attacked normally instead. */
+/* King vs. Mercenary: a King next to and facing an enemy Mercenary bribes
+   it, and it changes sides. No dice are rolled. The bribe replaces the
+   King's attack rather than being an extra action. A Mercenary that is
+   adjacent to AND faced by its own King cannot be bribed -- the King is
+   watching -- and is attacked normally instead. */
 function kingWatches(P, grid, merc) {
   const own = kingOf(P, merc.side);
   if (!own) return false;
@@ -1550,21 +1522,21 @@ function applyBribe(P, king, merc) {
   /* It has not attacked for its new side, whatever it did for the old one.
      The flag is only reset for the side about to move, so left alone it
      carried over from the previous owner's turn: a Mercenary that had
-     attacked then could not attack now, and one that had not, could. The
-     rules are silent on whether it may act at once; it may. */
+     attacked then could not attack now, and one that had not, could. It
+     may act at once. */
   merc.attackedThisTurn = false;
   return merc;
 }
 
-/* p.8: win by eliminating the King, OR by leaving the rival's King
+/* Win by eliminating the King, OR by leaving the rival's King
    standing ALONE on the field -- not by wiping the whole army.
 
    One attack can do both at once: Peasants kill the enemy King and then
    panic off the board, leaving their own King alone. A dead King is the
    harder fact, so both sides are checked for one before either is checked
    for the other -- checking side by side once gave the game to Gold with
-   its King dead. Where both Kings are left alone together the rules are
-   silent; the side whose action did it wins. */
+   its King dead. Where both Kings are left alone together, the side whose
+   action did it wins. */
 function checkVictory(P) {
   for (const side of [0, 1]) {
     if (!kingOf(P, side)) return { winner: 1 - side, reason: "king" };
@@ -1687,7 +1659,7 @@ function assertInvariants() {
       if (occupied.has(k)) throw new Error(`Two living units on ${u.c},${u.r} ${where}`);
       occupied.add(k);
 
-      /* The box holds 4 combat dice. Nothing may exceed that. */
+      /* Nothing may roll more than 4 dice. */
       const n = diceFor(u);
       if (n < 1 || n > MAX_DICE) throw new Error(`${u.type} would roll ${n} dice ${where}`);
     } else if (u.figs !== 0) {
@@ -1731,9 +1703,8 @@ function assertSerialisable() {
 /* ============================================================
    HEADLESS SIM — random legal moves, both sides. This is a
    crash-and-termination harness, NOT a balance harness: the
-   numbers are Larry Harris's and tuning them is exactly what
-   this port exists to avoid. What it can legitimately reveal is
-   a MISREAD rule.
+   numbers are fixed by the rules and are not ours to tune. What
+   it can legitimately reveal is a MISREAD rule.
    ============================================================ */
 function playRandomGame(seed) {
   newGame(seed);
@@ -2301,8 +2272,7 @@ function renderBoard() {
   const aimDef = UI.aim ? byUid(G, UI.aim.def) : null;
   const lead = sel && sel.alive ? sel : (aimAtk && aimAtk.alive ? aimAtk : null);
   const moves = new Set(), targets = new Set(), zone = new Set();
-  /* THE SCREEN. p.6: "Place the empty game box upright between you and your
-     opponent to form a screen. Now, IN SECRET, set up your warriors." Both
+  /* THE SCREEN. Battle plans are laid in secret. Both
      armies are on the board from the first frame of startGame, so laying a
      plan against the AI meant laying it against a line you could see -- and
      could answer. Hot-seat had the curtain; the AI game had nothing.
@@ -2366,7 +2336,7 @@ function renderBoard() {
       /* Distance from the selected unit, so the highlight blooms OUTWARD from
          it rather than appearing all at once. For a rider that draws the lane
          as far as it reaches; for an Archer the block opens out of the bow.
-         The player has never read the rulebook -- this is where the reach of
+         The player has never read the rules -- this is where the reach of
          a unit gets explained. */
       const d = lead ? Math.max(Math.abs(c - lead.c), Math.abs(r - lead.r)) : 0;
       html += `<div class="${cls.join(" ")}" role="gridcell" data-c="${c}" data-r="${r}"
@@ -3051,8 +3021,8 @@ function faceSelected(face) {
     if (deployFace(sel, face)) updateAll();
     return;
   }
-  /* p.4: "A Turn in any direction (including an about-face) counts as one
-     action." The handles and the touch bar turn a quarter at a time, which
+  /* A turn in any direction, an about-face included, is one action. The
+     handles and the touch bar turn a quarter at a time, which
      made an about-face cost two by mouse and put it out of a Heavy
      Infantry's reach altogether. So a second quarter on the same unit,
      before anything else has happened, revises the first turn rather than
@@ -3288,7 +3258,7 @@ function startGame(seed, opts) {
     Object.assign({ humanSide: UI.humanSide || 0,
                     skill: UI.pendingSkill != null ? +UI.pendingSkill : 1 }, opts || {}));
 
-  /* The Basic Game's opening is printed and fixed. A customised army gets the
+  /* The standard opening is fixed. A customised army gets the
      secret battle plan, which is where the strategy lives. */
   const humans = [0, 1].filter(i => !G.players[i].isBot);
   if (G.cfg.setup === "custom" && humans.length) {
@@ -3347,7 +3317,7 @@ const W_ATTACK = 0.45;    /* value of an attack available right now       */
    at 1.2 the best advance scored -4.8 against dozens of 0-delta turns. */
 const W_ADVANCE = 3;      /* per rank closer to the enemy King            */
 const W_FACING = 3;       /* pointed at the nearest enemy                 */
-/* Cover was the stalemate. The printed opening is already maximally packed,
+/* Cover was the stalemate. The standard opening is already maximally packed,
    so every move broke three adjacencies and cost 6 -- the army was glued to
    its deployment. Kept only as a whisper for tie-breaking. */
 const W_COVER = 0.5;      /* per orthogonally adjacent friendly           */
@@ -3705,8 +3675,8 @@ function botChooseTurn(P, side, skillIx) {
 }
 
 /* ============================================================
-   CUSTOMISED MUSTER (rulebook p.6)
-   "Both players start with 10 bases on the board." There is no
+   CUSTOMISED MUSTER
+   Both players start with 10 bases on the board. There is no
    points system: the constraints are the physical components --
    how many figures you own, how many fit on a base, and how
    many bases of each special you are allowed.
@@ -3769,7 +3739,7 @@ function validateArmy(spec, cfg) {
 }
 
 /* Build the actual units from a spec, ordered so the King lands centre-back
-   and the rest fill outward -- the printed basic arrangement generalised. */
+   and the rest fill outward -- the standard arrangement generalised. */
 function unitsFromSpec(side, spec) {
   const out = [{ type: "king", figs: 1 }];
   for (const t of MUSTER_ORDER) {
@@ -3779,10 +3749,10 @@ function unitsFromSpec(side, spec) {
   return out;
 }
 
-/* p.6: "Your King must start on the royal emblem in the back row, and you
-   may place your other figures on that row and the row in front of it."
+/* The King starts on the royal emblem in the back row; everything else
+   goes on that row or the one in front of it.
 
-   The default formation follows the shape of the printed basic army rather
+   The default formation follows the shape of the standard army rather
    than filling the back row first: bows and horse behind the line, foot
    screening in front. Both rows fill outward from the centre, so a short
    muster still forms a line instead of hugging one edge. */
@@ -3802,11 +3772,11 @@ const MISSILE_HORSE = ["archer", "knight"];
    muster turned out to be. `grade` is soundness, 1 to 3, and it
    is what separates a Squire's opening from a Marshal's -- see
    pickOpening(). Nothing here reads the enemy: both plans are
-   laid blind, which is the rulebook's own arrangement.
+   laid blind.
    ============================================================ */
 const OPENINGS = [
-  { key: "line", grade: 3, name: "The printed line",
-    note: "Bows and horse behind, foot screening in front — the shape of the printed army.",
+  { key: "line", grade: 3, name: "The standard line",
+    note: "Bows and horse behind, foot screening in front — the shape of the standard army.",
     back: MISSILE_HORSE, backCols: CENTRE_OUT, frontCols: CENTRE_OUT, kingCol: 4 },
 
   { key: "screen", grade: 3, name: "Archer screen",
@@ -3847,7 +3817,7 @@ function openingByKey(key) {
   return OPENINGS.find(o => o.key === key) || OPENINGS[0];
 }
 
-/* The King takes its square first -- the printed emblem, or the opening's
+/* The King takes its square first -- the royal emblem, or the opening's
    own preference when the free-King house rule is on -- and everything else
    fills its preferred rank, overflowing to the other. */
 function placeArmy(side, list, opening) {
@@ -3896,7 +3866,7 @@ function deployFromSpec(side, spec, opening) {
    never produces an illegal army -- validateArmy() gates every candidate. */
 function botMuster(side, pickSeed) {
   const candidates = [
-    /* Mixed host: the printed basics stiffened with a Heavy Infantry pair. */
+    /* Mixed host: the standard basics stiffened with a Heavy Infantry pair. */
     { knight: { bases: 2, figs: 2 }, archer: { bases: 2, figs: 4 },
       infantry: { bases: 3, figs: 4 }, heavy: { bases: 1, figs: 2 },
       peasant: { bases: 1, figs: 4 }, mercenary: { bases: 0, figs: 0 } },
@@ -3908,7 +3878,7 @@ function botMuster(side, pickSeed) {
     { knight: { bases: 2, figs: 2 }, archer: { bases: 1, figs: 4 },
       infantry: { bases: 3, figs: 4 }, heavy: { bases: 0, figs: 0 },
       peasant: { bases: 2, figs: 2 }, mercenary: { bases: 1, figs: 2 } },
-    /* The printed basic army, unchanged. */
+    /* The standard army, unchanged. */
     basicSpec(),
     /* Massive Infantry: all twenty foot on two ten-man bases. Legal only
        under that rule, so it is filtered out of every other game. */
@@ -3924,7 +3894,7 @@ function botMuster(side, pickSeed) {
 /* ============================================================
    MUSTER SCREEN
    Renders itself from UNIT_DEFS and CUSTOM_BASE_CAPS, so
-   changing a printed number changes the screen with no edit
+   changing a rule number changes the screen with no edit
    here. The confirm button is never silently dead: when the
    muster is illegal it shows the validator's own sentence.
    ============================================================ */
@@ -3956,8 +3926,7 @@ function musterConfirm() {
   UI.musterSpecs = UI.musterSpecs || {};
   UI.musterSpecs[UI.musterSide] = JSON.parse(JSON.stringify(UI.muster));
 
-  /* Hot-seat: the second player musters in secret behind the curtain, which
-     is the digital stand-in for the rulebook's upright game box. */
+  /* Hot-seat: the second player musters in secret behind the curtain. */
   const other = 1 - UI.musterSide;
   if (UI.pendingOpponent === "hotseat" && !UI.musterSpecs[other]) {
     UI.musterSide = other;
@@ -4008,7 +3977,7 @@ function renderMuster() {
   /* "Basic army" beside "Take the field" read as a second army to choose,
      when it is the one already on the table. It is a reset, and it says so,
      and it stands down when there is nothing to reset. */
-  const printed = JSON.stringify(spec) === JSON.stringify(basicSpec());
+  const isStandard = JSON.stringify(spec) === JSON.stringify(basicSpec());
   /* Hot-seat's first muster leads to the second player's, not to the board. */
   const handover = UI.pendingOpponent === "hotseat" && !(UI.musterSpecs && UI.musterSpecs[1 - UI.musterSide]);
 
@@ -4016,10 +3985,10 @@ function renderMuster() {
     <span class="box-label">Muster &mdash; <span class="side s${UI.musterSide}">${esc((G && G.players ? G.players[UI.musterSide].name : UI.musterSide === 0 ? "Green" : "Gold"))}</span></span>
     <p class="muster-lede">You field ten bases. A base is one unit of identical figures, and its
       figure count is both its strength and the dice it rolls.</p>
-    <p class="dim">Leave it as it stands for the printed army, or muster your own from the
-      figures in the box.</p>
+    <p class="dim">Leave it as it stands for the standard army, or build your own from your
+      pool of figures.</p>
     <table class="muster">
-      <thead><tr><th scope="col">Warrior</th><th scope="col">Bases</th><th scope="col">Figures each</th><th scope="col">Of the box</th></tr></thead>
+      <thead><tr><th scope="col">Warrior</th><th scope="col">Bases</th><th scope="col">Figures each</th><th scope="col">Used</th></tr></thead>
       <tbody>
         <tr class="locked"><th scope="row">King</th><td class="step"><b>1</b></td><td class="step"><b>1</b></td><td class="pool">1 of 1</td></tr>
         ${rows}
@@ -4029,7 +3998,7 @@ function renderMuster() {
        &middot; ${specFigures(spec)} warriors</p>
     <p class="why${why ? "" : " ok"}" role="status">${why ? esc(why) : "Ready."}</p>
     <div class="muster-actions">
-      <button class="btn" data-act="musterPreset" ${printed ? "disabled" : ""}>Reset to printed</button>
+      <button class="btn" data-act="musterPreset" ${isStandard ? "disabled" : ""}>Reset to standard</button>
       <button class="btn btn-go" data-act="musterConfirm" ${why ? "disabled" : ""}>${handover ? "Done &mdash; hand over" : "Lay the battle plan"}</button>
     </div>
   </div>`;
@@ -4244,30 +4213,28 @@ function loadPrefs() {
    HOUSE RULES
    Each carries its provenance, because "optional rule" and "we
    invented this" are not the same claim. Everything is off by
-   default, so the shipped defaults are the printed game.
+   default, so the shipped defaults are the standard game.
    ============================================================ */
 /* Shown in the menu. The round limit is deliberately NOT here: it is not a
-   printed rule at all, only a stalemate backstop, and offering it as a choice
+   game rule at all, only a stalemate backstop, and offering it as a choice
    invites someone to switch on a rule the game does not have. */
-/* Off is the printed game -- the rulebook as written, and where it is silent,
-   the most literal reading of what it does say. Every switch here is an
-   override: four of ours, and one the rulebook supplies itself. None of them
-   is on unless you turn it on, so what ships is Larry Harris's game. */
+/* Off is the standard game. Every switch here is an override, and none of
+   them is on unless you turn it on. */
 const HOUSE_RULES = [
   { key: "massiveInfantry", name: "Massive Infantry",
-    source: "The rulebook's own option, p.8",
-    note: "All 20 Infantry a side, up to 10 on a base, never more than 4 dice. Printed as an option rather than a rule: “if both players agree.”" },
+    source: "Optional rule",
+    note: "All 20 Infantry a side, up to 10 on a base, never more than 4 dice." },
   { key: "partialBases", name: "Bases may be under-filled",
-    source: "Our house rule",
-    note: "As printed, a base carries its full count. The p.8 table writes “1 or 2” for Heavy Infantry and “up to 4” for Peasants and a bare number for everyone else, and p.6 repeats it: “Put 2 on a base” for Mercenaries. A base holds fewer only once it has taken casualties. This lets you field a 3-man Infantry base or a lone Knight from the start." },
+    source: "House rule",
+    note: "Normally a base is fielded full and holds fewer only once it has taken casualties. This lets you field a 3-man Infantry base or a lone Knight from the start." },
   { key: "freeKing", name: "The King deploys freely",
-    source: "Our house rule",
-    note: "As printed, p.6: “Your King must start on the royal emblem in the back row”, and nothing may swap onto that square. This frees it to go anywhere on your two ranks like every other base." },
+    source: "House rule",
+    note: "Normally your King must start on the royal emblem in the centre of the back row, and nothing may swap onto that square. This frees it to go anywhere on your two ranks like every other base." },
   { key: "extraGreen", name: "Green rolls an extra die",
-    source: "Our house rule",
+    source: "House rule",
     note: "Green throws one die more than the unit is owed and discards the worst of them — three dice become four, keep three. A PANIC goes first, then a face that scores nothing; a scoring face is never the one thrown away." },
   { key: "extraGold", name: "Gold rolls an extra die",
-    source: "Our house rule",
+    source: "House rule",
     note: "The same for Gold. Set one for a handicap either way, or both to leave the odds level and the fights bloodier." },
 ];
 
@@ -4330,9 +4297,8 @@ function renderMenu() {
     </dl>
     <details class="disclose"${UI.menuAdvanced ? " open" : ""}>
       <summary data-act="menuAdvanced">House rules
-        <span class="dim">&mdash; all off, so this is the printed game</span></summary>
-      <p class="prov-head">Off is Larry Harris's game as written. Each switch is an override:
-        four of ours, and one the rulebook offers itself.</p>
+        <span class="dim">&mdash; all off, so this is the standard game</span></summary>
+      <p class="prov-head">Each switch changes one rule, for this game only.</p>
       <ul class="house">${house}</ul>
     </details>
     <div class="muster-actions">
@@ -4344,7 +4310,7 @@ function renderMenu() {
 
 /* ============================================================
    HELP — rendered FROM the rule tables, never transcribed
-   beside them, so a change to a printed number reaches the help
+   beside them, so a change to a rule number reaches the help
    with no edit here.
    ============================================================ */
 function renderHelp() {
@@ -4399,9 +4365,8 @@ function renderHelp() {
        square to move it, or another base to swap them. <b>Re-form the line</b> steps through
        the openings the AI draws from &mdash; eight shapes, named as they land &mdash; so you can
        start from one and adjust. Bunch in the middle, or send the riders
-       wide to turn a flank &mdash; the rulebook's own words are &ldquo;You&rsquo;re in
-       command!&rdquo; Leaving the muster and the line exactly as they stand gives you the
-       printed Basic Game, square for square.</p>
+       wide to turn a flank. Leaving the muster and the line exactly as they stand gives you the
+       standard opening.</p>
 
     <h3>The warriors</h3>
     <div class="scrollx"><table class="ref">
@@ -4422,17 +4387,21 @@ function renderHelp() {
     <h3>Keys</h3>
     <table class="ref keys">${keys}</table>
 
-    <h3>Where these rules come from</h3>
-    <p class="dim">Everything above is transcribed from the official Parker Brothers rulebook for
-      <i>Lionheart</i> (1997), product 40742-I, which Hasbro still serves at
-      <code>hasbro.com/common/instruct/Lionheart.PDF</code>. The board is nine files by eight ranks;
-      the widely repeated “9 by 10” traces to a single hedged line in a 1998 magazine review and is
-      wrong. The rules are silent or unclear on eight points &mdash; what you give up when
-      customising, how a turn-order tie is broken, whether a rider may move zero squares, whether
-      a lone Peasant gets the two-hit re-roll that a lone Infantryman or Archer gets, who wins when
-      both Kings are left alone at once, whether a bribed Mercenary may act the turn it changes
-      sides, how Peasants count PANIC, and what a bribe costs &mdash; and those readings are ours. Whether a base may be under-filled is <i>not</i> one of them: the rules are clear
-      that a base is fielded full, and the house rule that relaxes it says so.</p>
+    <h3>Fine points</h3>
+    <p class="dim"><b>Who goes first.</b> Both sides roll four dice and the most battle-axes
+      starts. Ties roll again.</p>
+    <p class="dim"><b>Riders</b> must move at least one square when they move.</p>
+    <p class="dim"><b>A lone Infantryman or Archer</b> attacking a unit that takes two hits rolls
+      its one die, and on a hit rolls it again for the second. A PANIC either time panics it. A
+      lone Peasant gets no second roll.</p>
+    <p class="dim"><b>Peasants</b> score with whichever face they rolled most of; a tie between
+      PANIC and a scoring face goes to the hits. Every PANIC still costs a retreat.</p>
+    <p class="dim"><b>Bribes.</b> A King next to and facing an enemy Mercenary bribes it instead of
+      attacking: one action, no dice, and it always works. It is the King&rsquo;s attack for the
+      turn, and the Mercenary may act for its new side at once. A Mercenary its own King is next
+      to and facing cannot be bribed, and is attacked normally instead.</p>
+    <p class="dim"><b>Both Kings alone at once.</b> The side whose action did it wins.</p>
+    <p class="dim"><b>Round limit.</b> A game still going after 200 rounds is called a stalemate.</p>
     <div class="muster-actions"><button class="btn" data-act="helpClose">Close</button></div>
   </div>`;
 }
@@ -4440,7 +4409,7 @@ function renderHelp() {
 /* ============================================================
    THE COACH — one line at a time, each shown once.
    ============================================================ */
-/* THE COACH. The player has never seen the box, and the board teaches most
+/* THE COACH. The player has never played before, and the board teaches most
    of itself -- but two or three things no amount of highlighting conveys.
    One line at a time, under the board, at the moment it becomes true.
 
@@ -4614,7 +4583,7 @@ const SHOTS = {
   },
 
   /* Laying the battle plan -- the part of the game the player actually
-     commands, per "You're in command!" on p.6. */
+     commands. */
   deploy() {
     UI.pendingOpponent = "ai"; UI.pendingSkill = 2;
     UI.houseRules = defaultHouseRules();
@@ -4735,15 +4704,10 @@ function runShot(name) {
 }
 
 /* ============================================================
-   DEPLOYMENT — "Your Secret Battle Plans" (rulebook p.6)
-   "Your King must start on the royal emblem in the back row,
-   and you may place your other figures on that row and the row
-   in front of it. Other than that, use your strategy: Will you
-   bunch your units in the middle, or start your Knights along
-   the outside to flank your opponent? You're in command!"
-
-   That last line is the designer saying placement IS the game,
-   so it cannot be a template. The board starts in the auto
+   DEPLOYMENT — the secret battle plan
+   The King starts on the royal emblem in the back row; every
+   other base goes on that row or the one in front of it.
+   Placement IS the game, so it cannot be a template. The board starts in the auto
    formation and every base is yours to move, swap and face --
    which also means the position is legal at every moment, with
    no half-placed state for the invariants to trip over.
@@ -4755,7 +4719,7 @@ function deployRows(side) {
 function inDeployZone(side, c, r) {
   return inBoard(c, r) && deployRows(side).includes(r);
 }
-/* p.6: "Your King must start on the royal emblem in the back row." That is
+/* The King starts on the royal emblem in the back row. That is
    what ships. Freeing the King to deploy like any other base is a house rule
    -- the author plays it that way, with the board in front of him -- and it
    is his to switch on, not ours to assume. */
@@ -4796,7 +4760,7 @@ function deployFace(unit, face) {
    next opening, named in the field report; adjust from there by hand. */
 /* A human's line is laid as OPENINGS[0] (see newGame), so that is where the
    library starts: Re-form the line's first press goes to the SECOND shape.
-   Starting from null made the first press re-lay the printed line over
+   Starting from null made the first press re-lay the standard line over
    itself -- nothing moved, and it took a second press to see the button do
    anything. Named in the bar from the start, so the player can see which
    shape they are looking at and that the button steps on from it. */
@@ -4833,10 +4797,9 @@ function deployReady() {
   if (otherIsHuman && !G.playersDeployed.includes(other)) {
     G.deploySide = other;
     UI.sel = null;
-    startLibrary();                     /* the second plan starts on the printed line too */
+    startLibrary();                     /* the second plan starts on the standard line too */
     UI.cur = idx(4, deployRows(other)[0]);
-    /* Hot-seat: the second battle plan is laid in secret, which is what the
-       rulebook's upright game box is for. */
+    /* Hot-seat: the second battle plan is laid in secret too. */
     if (G.cfg.opponent === "hotseat") { UI.curtain = true; UI.curtainThen = "deploy"; }
     log(`${G.players[other].name} lays a battle plan.`);
     updateAll();
@@ -5225,7 +5188,7 @@ const RULE_TESTS = [
     return res.hits === 0 && res.removed === 0 && foe.figs === 4 && res.panicSteps === 1;
   }],
 
-  ["a Peasant keeps its hits AND observes the PANIC (rulebook p.6 example)", () => {
+  ["a Peasant keeps its hits AND observes the PANIC", () => {
     const [pea, foe] = testPosition([
       { side: 0, type: "peasant", figs: 4, c: 4, r: 5, face: N },
       { side: 1, type: "infantry", figs: 4, c: 4, r: 4, face: S },
@@ -5391,7 +5354,7 @@ const RULE_TESTS = [
     return !last.alive && v && v.winner === 0 && v.reason === "alone";
   }],
 
-  ["the printed basic army is a legal muster: 10 bases, 33 warriors", () => {
+  ["the standard army is a legal muster: 10 bases, 33 warriors", () => {
     const spec = basicSpec();
     return validateArmy(spec, { partialBases: true }) === null &&
            specBases(spec) === 10 && specFigures(spec) === 33;
@@ -5405,7 +5368,7 @@ const RULE_TESTS = [
     return !!why && /own 20/.test(why);
   }],
 
-  ["a muster cannot exceed the printed base caps for the specials", () => {
+  ["a muster cannot exceed the base caps for the specials", () => {
     const blank = () => ({ knight: { bases: 0, figs: 0 }, archer: { bases: 0, figs: 0 },
                            infantry: { bases: 0, figs: 0 }, heavy: { bases: 0, figs: 0 },
                            peasant: { bases: 0, figs: 0 }, mercenary: { bases: 0, figs: 0 } });
@@ -5425,9 +5388,9 @@ const RULE_TESTS = [
            /bases still to fill/.test(validateArmy(Object.assign(blank(), { heavy: { bases: 2, figs: 1 } }), { partialBases: true }));
   }],
 
-  ["a base cannot be over-filled beyond its printed maximum", () => {
+  ["a base cannot be over-filled beyond its maximum", () => {
     const spec = basicSpec();
-    spec.peasant = { bases: 1, figs: 5 };          /* "up to 4 on a base" */
+    spec.peasant = { bases: 1, figs: 5 };          /* up to 4 on a base */
     const why = validateArmy(spec, { partialBases: true });
     return !!why && /only 4 fit/.test(why);
   }],
@@ -5463,7 +5426,7 @@ const RULE_TESTS = [
     return true;
   }],
 
-  ["a King facing an enemy Mercenary bribes it instead of attacking (p.7)", () => {
+  ["a King facing an enemy Mercenary bribes it instead of attacking", () => {
     const [king, merc] = testPosition([
       { side: 0, type: "king", figs: 1, c: 4, r: 5, face: N },
       { side: 1, type: "mercenary", figs: 2, c: 4, r: 4, face: S },
@@ -5515,13 +5478,12 @@ const RULE_TESTS = [
     return !!v && v.winner === 0 && v.reason === "alone";
   }],
 
-  ["the printed basic deployment matches the diagram on p.3", () => {
+  ["the standard deployment is laid out as specified", () => {
     newGame(4, { setup: "basic" });
     const at = (c, r) => (G.units.find(u => u.c === c && u.r === r) || {}).type;
     const back = H - 1, front = H - 2;
-    /* "King in the center of your back row ... a unit of Knights on either
-       side of the King ... a unit of Archers on either side of the Knights
-       ... your 5 Infantry units directly in front." */
+    /* King centre-back, Knights either side of it, Archers either side of
+       the Knights, 5 Infantry directly in front. */
     const row = at(2, back) === "archer" && at(3, back) === "knight" &&
                 at(4, back) === "king" && at(5, back) === "knight" && at(6, back) === "archer";
     const line = [2, 3, 4, 5, 6].every(c => at(c, front) === "infantry");
@@ -5529,7 +5491,7 @@ const RULE_TESTS = [
     return row && line && empty;
   }],
 
-  ["movement may not pass through another unit (p.4)", () => {
+  ["movement may not pass through another unit", () => {
     const [kn] = testPosition([
       { side: 0, type: "knight", figs: 2, c: 4, r: 7, face: N },
       { side: 1, type: "infantry", figs: 4, c: 4, r: 4, face: S },
@@ -5540,12 +5502,12 @@ const RULE_TESTS = [
     return JSON.stringify(dests) === JSON.stringify([6, 5]);
   }],
 
-  ["Mercenaries move one square at a time, not as riders do (p.7)", () => {
+  ["Mercenaries move one square at a time, not as riders do", () => {
     const [merc] = testPosition([{ side: 0, type: "mercenary", figs: 2, c: 4, r: 7, face: N }]);
     return moveSquares(G, buildGrid(G), merc).length === 1 && !defOf(merc).mounted;
   }],
 
-  ["a base leaves the board when its last figure is hit (p.5)", () => {
+  ["a base leaves the board when its last figure is hit", () => {
     const [inf, foe] = testPosition([
       { side: 0, type: "infantry", figs: 4, c: 4, r: 5, face: N },
       { side: 1, type: "infantry", figs: 2, c: 4, r: 4, face: S },
@@ -5556,7 +5518,7 @@ const RULE_TESTS = [
            buildGrid(G)[idx(4, 4)] === 0;      /* and the square is clear */
   }],
 
-  ["first turn goes to whoever rolls the most battle-axes (p.4)", () => {
+  ["first turn goes to whoever rolls the most battle-axes", () => {
     /* Both sides roll 4 dice; ties re-roll. Over many seeds neither side may
        be favoured, and G.first must always be a valid side. */
     let side0 = 0;
@@ -5594,23 +5556,23 @@ const RULE_TESTS = [
     return z.every(sq => inBoard(sq.c, sq.r)) && z.every(sq => sq.c >= 0) && z.length < 9;
   }],
 
-  ["the default muster, left alone, deploys to the printed Basic opening", () => {
+  ["the default muster, left alone, deploys to the standard opening", () => {
     /* This is why the menu no longer offers "Basic" as a separate choice:
        it was a choice between a thing and itself. If this test ever fails,
        the option has to come back. */
     const snap = () => G.units.filter(u => u.side === 0)
       .map(u => `${u.type}@${u.c},${u.r}/${u.face}`).sort().join(" ");
     newGame(4, { setup: "basic" });
-    const printed = snap();
+    const basic = snap();
     newGame(4, { setup: "custom", specs: { 0: basicSpec(), 1: basicSpec() } });
-    return printed === snap() && /king@4,7/.test(printed);
+    return basic === snap() && /king@4,7/.test(basic);
   }],
 
   ["a customised game with a human in it stops to lay a battle plan", () => {
     UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
     startGame(55, { setup: "custom", opponent: "ai" });
     const deploying = G.phase === "deploy" && G.deploySide === 0;
-    /* The Basic Game's opening is printed and fixed -- no plan to lay. */
+    /* The standard opening is fixed -- no plan to lay. */
     startGame(55, { setup: "basic", opponent: "ai" });
     return deploying && G.phase === "play";
   }],
@@ -5636,14 +5598,14 @@ const RULE_TESTS = [
     return u.c === oc && u.r === or_ && other.c === uc && other.r === ur;
   }],
 
-  ["as printed, the King holds the royal emblem and nothing leaves the zone", () => {
+  ["by default, the King holds the royal emblem and nothing leaves the zone", () => {
     UI.pendingOpponent = "ai"; UI.houseRules = defaultHouseRules();
     startGame(57, Object.assign(houseRulesToCfg(UI.houseRules),
       { setup: "custom", opponent: "ai" }));
     const king = G.units.find(u => u.side === 0 && u.type === "king");
     const other = G.units.find(u => u.side === 0 && u.type !== "king");
     const kc = king.c, kr = king.r;
-    /* p.6: "Your King must start on the royal emblem in the back row." */
+    /* The King starts on the royal emblem in the back row. */
     const onEmblem = kc === 4 && kr === H - 1;
     const pinned = !deployPlace(king, 0, H - 1) && king.c === kc && king.r === kr;
     const unswappable = !deployPlace(other, kc, kr);
@@ -5666,12 +5628,12 @@ const RULE_TESTS = [
     return kingMoves && kingSwaps;
   }],
 
-  ["as printed, a base carries its full count; the house rule relaxes it", () => {
+  ["by default, a base carries its full count; the house rule relaxes it", () => {
     const spec = basicSpec();
-    spec.infantry = { bases: spec.infantry.bases, figs: 3 };   /* 3 of a printed 4 */
-    const printed = validateArmy(spec, defaultHouseRules());
+    spec.infantry = { bases: spec.infantry.bases, figs: 3 };   /* 3 of a full 4 */
+    const strict = validateArmy(spec, defaultHouseRules());
     const relaxed = validateArmy(spec, Object.assign(defaultHouseRules(), { partialBases: true }));
-    return typeof printed === "string" && printed.length > 0 && relaxed === null;
+    return typeof strict === "string" && strict.length > 0 && relaxed === null;
   }],
 
   ["facing can be set freely while deploying, and costs nothing", () => {
@@ -5753,7 +5715,7 @@ const RULE_TESTS = [
       drop([AXE, AXE, ARROW], null) === ARROW;
     if (!ok) return false;
 
-    /* The pool itself is untouched, so the box still holds four dice. */
+    /* The pool itself is untouched, so no unit rolls more than four dice. */
     G.cfg.extraDie = [true, true];
     for (const u of G.units) if (u.alive && diceFor(u) > MAX_DICE) return false;
     G.cfg.extraDie = [false, false];
@@ -5790,7 +5752,7 @@ const RULE_TESTS = [
     /* The stall this guards was real and lasted six hundred rounds with all
        sixty figures alive. Human play has no round cap, so a bot that will
        not close is a game that cannot finish. Customised armies only: the
-       printed opening never produced it. */
+       standard opening never produced it. */
     for (const seed of [5, 9, 13]) {
       newGame(seed, { setup: "custom" });
       G.cfg.roundCap = 0;
@@ -5856,8 +5818,8 @@ function ruleTests() {
 }
 
 /* ============================================================
-   TABLE SELF-CHECK — runs at load and THROWS. These are the
-   printed facts, so a violation means the tables were mistyped,
+   TABLE SELF-CHECK — runs at load and THROWS. These are fixed
+   rule facts, so a violation means the tables were mistyped,
    not that the game is unbalanced. A check nobody has watched
    fail is indistinguishable from one that cannot fail, so each
    of these has been seen to go red.
@@ -5865,7 +5827,7 @@ function ruleTests() {
 function validateTables() {
   const die = DIE_FACES.reduce((m, f) => (m[f] = (m[f] || 0) + 1, m), {});
   if (die[AXE] !== 3 || die[ARROW] !== 2 || die[PANIC] !== 1) {
-    throw new Error("Die faces must be 3 axe / 2 arrow / 1 PANIC (rulebook p.2)");
+    throw new Error("Die faces must be 3 axe / 2 arrow / 1 PANIC");
   }
   for (let n = 1; n <= MAX_DICE; n++) {
     const sum = DICE_DIST[n].reduce((s, r) => s + r.p, 0);
@@ -5874,7 +5836,7 @@ function validateTables() {
   for (const t in UNIT_DEFS) {
     const d = UNIT_DEFS[t];
     if (d.perBase * d.dicePerFig > MAX_DICE) {
-      throw new Error(`${t} would roll more than ${MAX_DICE} dice; the box holds ${MAX_DICE}`);
+      throw new Error(`${t} would roll more than ${MAX_DICE} dice`);
     }
   }
   const bases = BASIC_ARMY.reduce((s, r) => s + r.bases, 0);
@@ -6071,7 +6033,7 @@ function boot() {
   }
 
   /* Otherwise: muster, then lay a battle plan. The cold start used to deal
-     the printed opening and call advance(), so the AI took its turn before
+     the standard opening and call advance(), so the AI took its turn before
      the player had clicked anything -- and the placement the whole game
      turns on was the one thing a first-time visitor never saw. */
   newGame(Math.floor(Math.random() * 1e9), {});   /* something to render behind the muster */
@@ -6079,7 +6041,7 @@ function boot() {
   UI.pendingSkill = UI.menu && UI.menu.skill != null ? +UI.menu.skill : 1;
   openMuster(0);
   console.log(
-    "%cPumaHeart — a port of Lionheart (Parker Brothers, 1997). Board is 9x8, not the 9x10 the internet claims.",
+    "%cPumaHeart — Gold against Green, nine squares by eight.",
     "color:#54f2ff"
   );
 }
