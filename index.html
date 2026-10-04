@@ -2239,6 +2239,21 @@ function loadSave() {
   } catch (e) { return null; }
 }
 function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+/* Settings' "Forget everything" (games-meta STANDARD.md): every key PumaHeart
+   owns, found by its prefix so a key added later is not one this misses, and
+   only those -- every game on greykit.com shares one origin, so one storage. */
+function forgetEverything() {
+  for (const area of ["localStorage", "sessionStorage"]) {
+    try {
+      const s = window[area];
+      for (let i = s.length - 1; i >= 0; i--) {
+        const k = s.key(i);
+        if (k && k.startsWith("pumaheart")) s.removeItem(k);
+      }
+    } catch (e) { /* no storage */ }
+  }
+  location.reload();
+}
 
 /* Picks up exactly where the tab left off, mid-deploy or mid-turn. advance()
    sorts out whose move it is: a human WAITs, a bot plays on. */
@@ -3500,6 +3515,8 @@ const ACTS = {
   titleSettings: () => { UI.sheet = "settings"; updateAll(); },
   titleAbout: () => { UI.sheet = "about"; updateAll(); },
   quickConfirm: () => { UI.sheet = null; quickGame(); },
+  sheetForget: () => { UI.sheet = "confirmForget"; updateAll(); },
+  forgetConfirm: () => forgetEverything(),
   sheetClose: () => { UI.sheet = null; updateAll(); },
   sheetSpeed: el => { UI.speed = +el.dataset.n; applySpeed(); try { localStorage.setItem(SPEED_KEY, String(UI.speed)); } catch (e) {} updateAll(); },
   sheetSound: el => { if ((el.dataset.on === "1") === UI.muted) toggleMute(); },
@@ -4704,13 +4721,16 @@ function renderSheet() {
   if (!UI.sheet) { el.hidden = true; el.innerHTML = ""; return; }
   el.hidden = false;
   const opt = (act, data, on, label) => `<span class="opt ${on ? "on" : ""}" data-act="${act}" ${data} role="button" tabindex="0" aria-pressed="${on}">${esc(label)}</span>`;
-  let label = "", body = "", go = "";
+  let label = "", body = "", go = "", back = "sheetClose";
   if (UI.sheet === "settings") {
     label = "Settings";
     body = `<dl class="menu-rows">
       <dt>Speed</dt><dd>${[1, 2, 3].map(n => opt("sheetSpeed", `data-n="${n}"`, UI.speed === n, SPEED_NAME[n])).join("")}</dd>
       <dt>Sound</dt><dd>${opt("sheetSound", 'data-on="1"', !UI.muted, "On")}${opt("sheetSound", 'data-on="0"', UI.muted, "Off")}</dd>
-    </dl><p class="note">Speed is how long each move takes to play out. Both are in the field's header too.</p>`;
+    </dl><p class="note">Speed is how long each move takes to play out. Both are in the field's header too.</p>
+    <dl class="menu-rows">
+      <dt>This browser</dt><dd><button class="btn" data-act="sheetForget">Forget everything</button></dd>
+    </dl><p class="note">Clears everything PumaHeart keeps in this browser: the battle in progress, speed, sound, and the coach's tips.</p>`;
   } else if (UI.sheet === "about") {
     label = "About";
     body = `<p>PumaHeart: Based on the board game Lionheart by Stephen Baker (1997). Developed entirely with Claude Code.</p>
@@ -4719,12 +4739,17 @@ function renderSheet() {
     label = "New quick game";
     body = `<p>Start a new battle? The battle in progress will be replaced.</p>`;
     go = `<button class="btn btn-go" data-act="quickConfirm">Start a new battle</button>`;
+  } else if (UI.sheet === "confirmForget") {
+    label = "Forget everything";
+    body = `<p>Forget everything PumaHeart has saved in this browser: the battle in progress, speed, sound, the coach's tips? This cannot be undone.</p>`;
+    go = `<button class="btn btn-go" data-act="forgetConfirm">Forget everything</button>`;
+    back = "titleSettings";
   }
   el.innerHTML = `<div class="box sheet-card" role="dialog" aria-modal="true" aria-label="${label}">
     <span class="box-label">${label}</span>${body}
-    <div class="muster-actions">${go}<button class="btn" data-act="sheetClose">${go ? "Cancel" : "Close"}</button></div>
+    <div class="muster-actions">${go}<button class="btn" data-act="${back}">${go ? "Cancel" : "Close"}</button></div>
   </div>`;
-  const first = el.querySelector(go ? "[data-act=quickConfirm]" : "[data-act=sheetClose]");
+  const first = el.querySelector(go ? ".btn-go" : "[data-act=sheetClose]");
   if (first && !el.contains(document.activeElement)) first.focus();
 }
 
