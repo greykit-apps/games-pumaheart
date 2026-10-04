@@ -99,7 +99,10 @@ No unit ever rolls more than four dice.
 
 ## Setting Up Your Army
 
-Every game opens on your battle plan.
+The title screen's **New quick game** fields the standard army against the computer and goes
+straight to deploying it. **Custom game** sets the opponent, the difficulty and the house rules,
+and then opens the muster. A battle in progress is saved as you play,
+and **Resume game** on the title screen picks it up.
 
 1. **Muster.** Build ten bases from the figures you own. Leave the muster as it stands to field
    the standard army, or swap some of its bases for specials — Heavy Infantry, Peasants,
@@ -128,7 +131,8 @@ Leave the muster and the line exactly as they stand and you get the standard ope
 
 ## House Rules
 
-All off by default. Switch them on from **House rules** in the New Game menu.
+All off by default. Switch them on from **House rules** in **Custom game** on the title
+screen.
 
 - **Massive Infantry** — all 20 Infantry a side, up to 10 on a base, never more than four dice.
 - **Bases may be under-filled** — field a three-man Infantry base or a lone Knight from the start.
