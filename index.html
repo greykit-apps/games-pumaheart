@@ -832,6 +832,9 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 .stats dt { color: var(--dim); }
 .stats dd { margin: 0; }
 .note { color: var(--dim); margin: 10px 0 0; font-size: 13px; }
+/* greykit.games canon §1 — the credit, on Muster, New Game and Help */
+.gk-credit { margin-top: 14px; font-size: 12px; }
+.gk-credit a { color: var(--accent); }
 .dim { color: var(--dim); margin: 0; }
 
 /* ============================================================
@@ -4001,6 +4004,7 @@ function renderMuster() {
       <button class="btn" data-act="musterPreset" ${isStandard ? "disabled" : ""}>Reset to standard</button>
       <button class="btn btn-go" data-act="musterConfirm" ${why ? "disabled" : ""}>${handover ? "Done &mdash; hand over" : "Lay the battle plan"}</button>
     </div>
+    <p class="note gk-credit">Built by <a href="https://greykit.com/" target="_blank" rel="noopener">greykit.com</a></p>
   </div>`;
 }
 
@@ -4305,6 +4309,7 @@ function renderMenu() {
       <button class="btn" data-act="menuClose">Cancel</button>
       <button class="btn btn-go" data-act="menuBegin">Begin</button>
     </div>
+    <p class="note gk-credit">Built by <a href="https://greykit.com/" target="_blank" rel="noopener">greykit.com</a></p>
   </div>`;
 }
 
@@ -4403,6 +4408,7 @@ function renderHelp() {
     <p class="dim"><b>Both Kings alone at once.</b> The side whose action did it wins.</p>
     <p class="dim"><b>Round limit.</b> A game still going after 200 rounds is called a stalemate.</p>
     <div class="muster-actions"><button class="btn" data-act="helpClose">Close</button></div>
+    <p class="note gk-credit">Built by <a href="https://greykit.com/" target="_blank" rel="noopener">greykit.com</a></p>
   </div>`;
 }
 
