@@ -29,15 +29,15 @@
 <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
 <style>
 /* ============================================================
-   TOKENS — Tactical tribe, PumaRally's palette. The first :root
-   is the same TOKENS table PumaCity retypes, retyped again here
-   because this is a single file and imports nothing; keep it
-   byte-identical to PumaCity's. Everything PumaHeart adds is a
-   mapping onto it, never a new hue.
+   TOKENS — Tactical tribe. The canon block is the palette every
+   Tactical game shares; everything PumaHeart adds is a mapping
+   onto it, never a new hue.
    ============================================================ */
+/* @gk-tokens-begin v0.1 -- greykit.games canon (games-meta STANDARD.md §4): the Tactical palette, PumaRally's (editor/render/palette.js). The copy of record is games-meta's canon/gk-tokens.css. */
 :root{--bg:#05070f;--panel:#0a0e1a;--panel2:#0d1424;--line:#1b2540;--lit:#47609c;
   --text:#dbe4fb;--ink:#8b96b8;--dim:#7d8aa8;--accent:#54f2ff;--warn:#ffb000;--danger:#ff5266;
   --good:#4ade6a;--violet:#b47dff;--steel:#94a0c4;--blue:#4c8dff}
+/* @gk-tokens-end */
 :root {
   /* Darker steps of tribe hues, for borders under a lit label. accent-dim
      and floor are PumaRally's; the other two are the same hue taken down. */
@@ -932,7 +932,7 @@ body.on-title .stage { visibility: hidden; }
       <span class="cmd" data-act="undo" role="button" tabindex="0" id="hud-undo">Undo</span>
       <span class="cmd" data-act="help" role="button" tabindex="0">Help</span>
       <span class="cmd is-toggle" data-act="speed" role="button" tabindex="0" id="hud-speed"></span>
-      <span class="cmd is-toggle" data-act="mute" role="button" tabindex="0" id="hud-mute"></span>
+      <span class="cmd is-toggle" data-act="mute" role="button" tabindex="0" id="hud-mute" aria-label="Sound" aria-pressed="true"></span>
       <span class="cmd is-quiet" data-act="titleOpen" role="button" tabindex="0" title="Back to the title screen. The battle stays saved.">Menu</span>
     </span>
     <span id="hud-turn" class="sr-only" aria-live="polite"></span>
@@ -974,10 +974,11 @@ body.on-title .stage { visibility: hidden; }
 <div id="announcements" class="sr-only" aria-live="polite"></div>
 
 <script>
-/* @gk-title-begin v0.1 -- greykit.games canon, byte-identical in every
- * Tactical game that has it: change it in one, copy it to all. Plain script,
- * no imports or exports, so a single-file game can paste it into a classic
- * <script> as it stands. */
+/* @gk-title-begin v0.2 -- greykit.games canon (games-meta STANDARD.md §3),
+ * byte-identical in every Tactical game. The copy of record is games-meta's
+ * canon/gk-title.js: change it there, bump the version, copy it to all, and
+ * tools/diff-standard.sh says where it differs. Plain script, no imports or
+ * exports, so a single-file game can paste it into a classic <script>. */
 
 /* greykit.com's mark: the right half of the face, flat cut on the left
  * (greykitweb/assets/greykit-mark.png at 240px). */
@@ -1010,8 +1011,11 @@ const TITLE_CSS = `
 .gk-boot .gk-slide{position:absolute;inset:0;transform:translateX(calc(var(--d) * -1));
   animation:gk-slide .6s cubic-bezier(.65,0,.35,1) .5s forwards}
 .gk-boot .gk-lh,.gk-boot .gk-rh{position:absolute;top:0;width:var(--S);height:var(--S)}
-.gk-boot .gk-lh{left:0}
-.gk-boot .gk-rh{left:var(--S)}
+/* the halves overlap by 2px, the left on top: two images laid edge to edge
+   are anti-aliased edge by edge, and some browsers (Brave) leave a hairline
+   of background between them */
+.gk-boot .gk-lh{left:0;z-index:1}
+.gk-boot .gk-rh{left:calc(var(--S) - 2px)}
 .gk-boot .gk-pulse{width:100%;height:100%;position:relative;transform-origin:100% 50%;animation:gk-pulse .7s ease-in-out 1.15s}
 .gk-boot .gk-face img{display:block;width:100%;height:100%;filter:invert(1) brightness(.72)}
 .gk-boot .gk-pulse img{animation:gk-glow .7s ease-in-out 1.15s}
@@ -1188,6 +1192,46 @@ function decodeTitle(h1, text) {
   }, 28);
 }
 
+/* The title's stylesheet, once, for a game that does not build its own CSS
+ * around TITLE_CSS. */
+function injectTitleCSS() {
+  if (!document.getElementById("gk-title-css")) document.head.insertAdjacentHTML("beforeend", '<style id="gk-title-css">' + TITLE_CSS + "</style>");
+}
+
+/* The boot log's first line: the page being reloaded, escaped. */
+function bootReloadLine() {
+  return "reload <b>" + escHTML(location.pathname.replace(/index\.html$/, "")) + "</b>";
+}
+
+/* The entrance: the menu rises, the name decodes, the default is focused.
+ * t is the .gk-title (the page's, if left out); the name is read off the h1. */
+function revealTitle(t = document.querySelector(".gk-title")) {
+  if (!t) return;
+  t.classList.add("gk-rise");
+  const h1 = t.querySelector("h1");
+  decodeTitle(h1, h1.getAttribute("aria-label"));
+  const b = t.querySelector(".gk-primary") || t.querySelector(".gk-menu button");
+  if (b) b.focus({ preventScroll: true });
+}
+
+/* The menu button a key presses: the one whose <kbd> shows that key, and the
+ * ? item for h and / as well. Read off the menu itself, so a key and its
+ * label cannot disagree. null when the key is not the menu's. */
+function titleKeyButton(menu, key) {
+  const k = key.length === 1 ? key.toLowerCase() : key;
+  const bs = [...menu.querySelectorAll("button")], kbd = b => (b.querySelector("kbd") || {}).textContent || "";
+  return bs.find(b => kbd(b).toLowerCase() === k) || ((k === "h" || k === "/") && bs.find(b => kbd(b) === "?")) || null;
+}
+
+/* ArrowDown / ArrowUp through the menu, wrapping. true when the key was one. */
+function titleArrow(menu, ev) {
+  if (ev.key !== "ArrowDown" && ev.key !== "ArrowUp") return false;
+  const bs = [...menu.querySelectorAll("button")], i = bs.indexOf(document.activeElement);
+  ev.preventDefault();
+  bs[(i + (ev.key === "ArrowDown" ? 1 : -1) + bs.length) % bs.length].focus();
+  return true;
+}
+
 /**
  * The title screen, into host.
  *   name      the game's name
@@ -1208,8 +1252,7 @@ function mountTitle(host, cfg) {
   const ctl = new AbortController();
   const sig = { signal: ctl.signal };
   host.innerHTML = titleHTML(cfg);
-  const root = host.firstChild, h1 = root.querySelector("h1"), menu = root.querySelector(".gk-menu");
-  const items = cfg.items.filter(Boolean);
+  const root = host.firstChild, menu = root.querySelector(".gk-menu");
   if (cfg.scene) cfg.scene(root.querySelector(".scene"));
   const focusPrimary = () => { const b = menu.querySelector(".gk-primary") || menu.querySelector("button"); if (b) b.focus({ preventScroll: true }); };
 
@@ -1276,18 +1319,13 @@ function mountTitle(host, cfg) {
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     if (sheet) { if (ev.key === "Escape") { ev.preventDefault(); closeSheet(); } return; }
     if (ev.target.closest && ev.target.closest("input,select,textarea")) return;
-    const k = ev.key.toLowerCase();
-    const hit = items.find(it => it.key && it.key.toLowerCase() === k) || ((k === "h" || k === "/") && items.find(it => it.act === "help"));
-    if (hit) { ev.preventDefault(); act(hit.act); return; }
-    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
-      const bs = [...menu.querySelectorAll("button")], i = bs.indexOf(document.activeElement);
-      bs[(i + (ev.key === "ArrowDown" ? 1 : -1) + bs.length) % bs.length].focus();
-      ev.preventDefault();
-    }
+    const hit = titleKeyButton(menu, ev.key);
+    if (hit) { ev.preventDefault(); act(hit.dataset.act); return; }
+    titleArrow(menu, ev);
   }, sig);
 
   return {
-    reveal() { root.classList.add("gk-rise"); decodeTitle(h1, cfg.name); focusPrimary(); },
+    reveal() { revealTitle(root); },
     unmount() { ctl.abort(); closeSheet(); }
   };
 }
@@ -2749,7 +2787,7 @@ function syncPrefsChrome() {
   const sp = document.getElementById("hud-speed");
   if (sp) sp.textContent = "Speed: " + SPEED_NAME[UI.speed];
   const mu = document.getElementById("hud-mute");
-  if (mu) mu.textContent = UI.muted ? "Sound off" : "Sound on";
+  if (mu) { mu.textContent = UI.muted ? "Sound off" : "Sound on"; mu.setAttribute("aria-pressed", UI.muted ? "false" : "true"); }
 }
 
 function renderHUD() {
@@ -4634,7 +4672,7 @@ function houseRulesToCfg(hr) {
    army, straight to the battle plan), Custom game (the New Game
    menu, then the muster), Settings, Help, About.
    ============================================================ */
-document.head.insertAdjacentHTML("beforeend", '<style id="gk-title-css">' + TITLE_CSS + "</style>");
+injectTitleCSS();
 const TITLE_NAME = "PumaHeart";
 function skillNow() { return UI.menu && UI.menu.skill != null ? +UI.menu.skill : 1; }
 function titleCfg() {
@@ -4671,16 +4709,6 @@ function closeTitle() {
   el.innerHTML = "";
   document.body.classList.remove("on-title");
 }
-/* the entrance: the menu rises and the name decodes, after the boot and on
-   every return from the field */
-function revealTitle() {
-  const t = document.querySelector("#title .gk-title");
-  if (!t) return;
-  t.classList.add("gk-rise");
-  decodeTitle(t.querySelector("h1"), TITLE_NAME);
-  const b = t.querySelector(".gk-primary");
-  if (b) b.focus({ preventScroll: true });
-}
 /* The battle behind the title, if one is live in this tab, is the saved one
    carried on: going back to it needs no reload. After a fresh load the board
    behind is only scenery, and the save is read back in. */
@@ -4706,14 +4734,9 @@ function titleKey(ev) {
   if (UI.helpOpen || UI.menuOpen || UI.musterOpen || UI.sheet || UI.curtain) return false;
   const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
   if (k === "Enter" || k === " " || k === "Tab" || k === "Shift") return false;
-  const want = { r: "titleResume", n: "titleQuick", c: "titleCustom", s: "titleSettings", "?": "help", "/": "help", h: "help", a: "titleAbout" }[k];
-  const hit = want && document.querySelector(`#title [data-act="${want}"]`);
-  if (hit) { ev.preventDefault(); dispatchAct(want, hit); return true; }
-  if (k === "ArrowDown" || k === "ArrowUp") {
-    const bs = [...document.querySelectorAll("#title .gk-menu button")], i = bs.indexOf(document.activeElement);
-    ev.preventDefault();
-    bs[(i + (k === "ArrowDown" ? 1 : -1) + bs.length) % bs.length].focus();
-  }
+  const menu = document.querySelector("#title .gk-menu"), hit = menu && titleKeyButton(menu, k);
+  if (hit) { ev.preventDefault(); dispatchAct(hit.dataset.act, hit); return true; }
+  if (menu) titleArrow(menu, ev);
   return true;       /* the board is hidden: its keys wait */
 }
 function renderSheet() {
@@ -4725,8 +4748,8 @@ function renderSheet() {
   if (UI.sheet === "settings") {
     label = "Settings";
     body = `<dl class="menu-rows">
-      <dt>Speed</dt><dd>${[1, 2, 3].map(n => opt("sheetSpeed", `data-n="${n}"`, UI.speed === n, SPEED_NAME[n])).join("")}</dd>
       <dt>Sound</dt><dd>${opt("sheetSound", 'data-on="1"', !UI.muted, "On")}${opt("sheetSound", 'data-on="0"', UI.muted, "Off")}</dd>
+      <dt>Speed</dt><dd>${[1, 2, 3].map(n => opt("sheetSpeed", `data-n="${n}"`, UI.speed === n, SPEED_NAME[n])).join("")}</dd>
     </dl><p class="note">Speed is how long each move takes to play out. Both are in the field's header too.</p>
     <dl class="menu-rows">
       <dt>This browser</dt><dd><button class="btn" data-act="sheetForget">Forget everything</button></dd>
@@ -6552,7 +6575,7 @@ function boot() {
      placement the whole game turns on is the player's: the cold start once
      dealt the standard opening and let the AI move before anyone clicked. */
   const saved = loadSave();
-  const boot = runBoot({ lines: ["reload <b>" + esc(location.pathname.replace(/index\.html$/, "")) + "</b>", "one file: nothing to fetch"] });
+  const boot = runBoot({ lines: [bootReloadLine(), "one file: nothing to fetch"] });
   newGame(Math.floor(Math.random() * 1e9), {});   /* scenery behind the title, never shown */
   UI.pendingOpponent = "ai";
   UI.pendingSkill = skillNow();
