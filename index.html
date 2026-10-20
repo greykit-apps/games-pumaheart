@@ -609,8 +609,8 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
    are-you-sure come up in a card like the New Game menu's. */
 #title { position: fixed; inset: 0; z-index: 7900; overflow-y: auto; }
 /* The table's pieces are the board's bases, outlined in Green's colour and
-   square, as on the field. */
-#title .gk-title { --gk-table-edge: var(--army-green); --gk-table-ratio: 1; }
+   square, as on the field; the shaved prow ends 42% down (BASE_SHAPE). */
+#title .gk-title { --gk-table-edge: var(--army-green); --gk-table-ratio: 1; --gk-table-head: 0.42; }
 #title[hidden], #sheet[hidden] { display: none !important; }
 body.on-title .stage { visibility: hidden; }
 #sheet {
@@ -2116,14 +2116,17 @@ const TABLE_CSS = `
    "tiles"): §6's items are pieces set down in a rank on the table, in the
    game's own shape. --gk-table-shape is that shape as a clip-path (gkTable's
    shape; a square with its corners cut, if left out), --gk-table-edge its
-   outline (the panel's line, if left out) and --gk-table-ratio its height
-   over its width (1.06). The outline and the face are two layers cut to the
+   outline (the panel's line, if left out), --gk-table-ratio its height
+   over its width (1.06), and --gk-table-head how far down it the shape
+   comes to its full width (.1): the words sit in the middle of the wide
+   part under that, the key in the head above. The outline and the face are two layers cut to the
    shape, so the shadow under a piece follows its outline ---- */
 .gk-title.gkt.gkt-tiles{--k-shape:var(--gk-table-shape,polygon(10% 0,90% 0,100% 10%,100% 90%,90% 100%,10% 100%,0 90%,0 10%))}
 .gk-title.gkt.gkt-tiles .gk-menu{gap:16px}
 .gk-title.gkt.gkt-tiles .gk-menu>button{--k-edge:var(--gk-table-edge,var(--t-line));
-  width:calc(var(--k-w) * 1.08);height:calc(var(--k-w) * 1.08 * var(--gk-table-ratio,1.06));margin:0;
-  padding:calc(var(--k-w) * .34) 12px 14px;justify-content:flex-start;gap:7px;
+  --k-th:calc(var(--k-w) * 1.08 * var(--gk-table-ratio,1.06));
+  width:calc(var(--k-w) * 1.08);height:var(--k-th);margin:0;
+  padding:calc(var(--k-th) * var(--gk-table-head,.1)) 12px 8px;justify-content:center;gap:7px;
   background:none;border:0;border-radius:0;box-shadow:none;isolation:isolate;translate:none;rotate:none;
   filter:drop-shadow(0 10px 12px rgba(0,0,0,.55));transition:translate .2s cubic-bezier(.3,.7,.4,1),filter .2s}
 .gk-title.gkt.gkt-tiles .gk-menu>button::before,.gk-title.gkt.gkt-tiles .gk-menu>button::after{content:"";position:absolute;z-index:-1;
@@ -2156,7 +2159,7 @@ const TABLE_CSS = `
   .gk-title.gkt .gk-menu .gk-util{grid-column:1/-1;margin-top:6px;gap:6px}
   .gk-title.gkt .gk-menu .gk-util button,.gk-title.gkt .gk-menu .gk-util button:first-child{flex:1 1 0;justify-content:center;padding:0 6px}
   .gk-title.gkt.gkt-tiles .gk-menu>button,.gk-title.gkt.gkt-tiles .gk-menu>button:hover,.gk-title.gkt.gkt-tiles .gk-menu>button:focus{
-    width:auto;height:auto;min-height:112px;padding:30px 10px 14px;justify-content:center;translate:none}
+    width:auto;height:auto;min-height:112px;padding:max(26px,calc(112px * var(--gk-table-head,.1))) 10px 8px;justify-content:center;translate:none}
 }
 @media (prefers-reduced-motion:reduce){
   .gk-title.gkt.gk-rise .gk-menu .gk-pr,.gk-title.gkt.gk-rise .gk-menu>.gk-pr::after,.gk-title.gkt>.scene.gkt-tilt>*,
