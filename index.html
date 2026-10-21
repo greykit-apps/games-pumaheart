@@ -611,6 +611,13 @@ td.step b { display: inline-block; min-width: 1.6em; text-align: center; }
 /* The table's pieces are the board's bases, outlined in Green's colour and
    square, as on the field; the shaved prow ends 42% down (BASE_SHAPE). */
 #title .gk-title { --gk-table-edge: var(--army-green); --gk-table-ratio: 1; --gk-table-head: 0.42; }
+/* In step with the quicker entrance (finish()'s timing, in init): each line
+   of the name settles faster than canon's .9s, and the pieces and counters
+   come down closer together than canon's 140ms and 130ms. A piece's own
+   fall keeps canon's .5s, which gktPlace's knock is timed to. */
+#title .gk-title.gkt.gki-intro h1 > span.gki-on { animation-duration: .45s; }
+#title .gk-title.gkt.gkt-tiles.gk-rise .gk-menu > .gk-pr { animation-delay: calc(var(--i) * 100ms); }
+#title .gk-title.gkt.gk-rise .gk-menu .gk-util .gk-pr { animation-delay: calc(var(--i) * 100ms + 100ms); }
 #title[hidden], #sheet[hidden] { display: none !important; }
 body.on-title .stage { visibility: hidden; }
 #sheet {
@@ -7928,6 +7935,10 @@ function boot() {
     more: [saved ? `battle in progress: ${saved.phase === "deploy" ? "the battle plan" : "round " + saved.round}` : "no battle in progress"],
     title: document.querySelector("#title .gk-title"),
     name: "lines",
+    /* much quicker than canon's (600, 700, 3000, 4200): the name is down
+       within a second of the boot, and the hand starts landing as its last
+       line does, with no pause between them (as PumaTriage's) */
+    timing: { name: 0, step: 220, menu: 380, done: 1400 },
     toggles: titleToggles(),
     tick: () => titleSfx(gktFlick, 0.3),
     onContinue: () => { const ac = audioCtx(); if (ac && ac.state !== "running") ac.resume().catch(() => {}); },
