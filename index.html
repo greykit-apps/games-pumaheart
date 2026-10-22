@@ -231,6 +231,7 @@ body {
 .turnbtn .arc { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 .turnbtn .head { fill: currentColor; stroke: none; }
 .turnbtn:active { color: var(--text); border-color: var(--accent-dim); }
+.turnbtn:disabled { opacity: 0.3; cursor: default; }
 .turn-who { text-align: center; min-width: 9em; }
 .turn-who .dim { display: block; font-size: 12px; }
 
@@ -747,7 +748,9 @@ body.on-title .stage { visibility: hidden; }
   .rots { display: none; }
   #touchbar { display: flex; }
 }
-@media (pointer: coarse) and (min-width: 761px) {
+/* The bar keeps its room with nothing selected, so selecting a unit never
+   pushes Undo and End turn out from under a thumb. */
+@media (pointer: coarse) {
   #touchbar[hidden] { display: flex !important; visibility: hidden; min-height: 46px; }
 }
 
@@ -876,7 +879,7 @@ body.on-title .stage { visibility: hidden; }
 
 @media (max-width: 760px) {
   /* One column, so the rail no longer takes a share of the width. */
-  :root { --sq: clamp(30px, min(9.6vw, 8vh), 58px); }
+  :root { --sq: clamp(30px, min(10vw, 8vh), 58px); }
   /* Brand and whose turn it is share the first line; the settings take the
      full width of the second. End turn and Undo are not up here at all --
      placeThumbCmds() moves them under the board. Six boxed commands in two
@@ -912,15 +915,50 @@ body.on-title .stage { visibility: hidden; }
   #app { border: 0; }
   #app {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "hud" "board" "touch" "thumb" "side";
+    grid-template-areas: "hud" "board" "touch" "thumb" "coach" "side";
     justify-content: stretch;
   }
+  /* placeThumbCmds() brings the coach out of the Field box to sit under
+     End turn: a hint arriving or leaving moves nothing a thumb is on. */
+  #app > #coach { grid-area: coach; }
   /* What just happened outranks what is selected: after an AI attack the
      field report must not be a scroll away. */
   #side { contain: none; overflow: visible; }
   #log { order: 1; min-height: 120px; flex: none; }
   #status { order: 2; }
   #log-list { max-height: 34vh; }
+}
+
+/* A phone held sideways: the board down the left at the height of the
+   screen, the HUD, the turn bar, End turn and Undo, the coach and the rail
+   in one column beside it that scrolls on its own. placeThumbCmds() and
+   placeFrame() treat this as a phone too (SIDEWAYS). */
+@media (max-height: 500px) and (min-width: 600px) and (orientation: landscape) {
+  :root { --sq: clamp(28px, calc((100dvh - 46px) / 8), 52px); }
+  #scene { display: none; }
+  .stage { display: block; padding: 0; min-height: 0; }
+  #app {
+    border: 0; height: 100dvh; padding: 6px 12px;
+    grid-template-columns: min-content minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
+    grid-template-areas: "board hud" "board touch" "board thumb" "board coach" "board side";
+    justify-content: stretch; align-content: stretch;
+  }
+  #board-wrap { margin-top: 0; padding-top: 10px; padding-bottom: 6px; }
+  #hud { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+  .hud-new { display: grid; flex: 1 1 100%; margin-top: 4px; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .hud-new .cmd { white-space: normal; text-align: center; justify-content: center; padding: 4px; font-size: 12px; line-height: 1.2; }
+  #touchbar, #coach { margin-top: 8px; }
+  #thumb { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px; margin-top: 8px; }
+  #thumb .cmd { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 6px; }
+  #thumb:empty { display: none; }
+  #app > #coach { grid-area: coach; }
+  #side { margin-top: 8px; min-height: 0; overflow-y: auto; contain: none; }
+  #log { order: 1; min-height: 0; flex: none; }
+  #status { order: 2; }
+  /* sized by what it holds, up to under half the screen, not grown from
+     nothing as the desktop rail's is */
+  #log-list { flex: none; max-height: 45dvh; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4101,11 +4139,15 @@ function updateAll() {
    Flex-centring both ways shifted the HUD, the board and the rail by half
    the hint's height every time. Re-run whenever #app changes size. */
 const PHONE = window.matchMedia("(max-width: 760px)");
+/* a phone held sideways: the CSS gives it the board on the left and a
+   column beside it, and it takes the phone's arrangements below */
+const SIDEWAYS = window.matchMedia("(max-height: 500px) and (min-width: 600px) and (orientation: landscape)");
+const HANDHELD = () => PHONE.matches || SIDEWAYS.matches;
 function placeFrame() {
   const stage = document.querySelector(".stage");
   const app = document.getElementById("app");
   if (!stage || !app) return;
-  if (PHONE.matches) { stage.style.paddingTop = ""; return; }
+  if (HANDHELD()) { stage.style.paddingTop = ""; return; }
   const coach = document.getElementById("coach");
   const hint = coach && !coach.hidden ? coach.offsetHeight + 12 : 0;   /* + its margin-top */
   const rest = app.offsetHeight - hint;
@@ -4121,11 +4163,18 @@ function placeThumbCmds() {
   const row = document.querySelector("#hud .hud-new");
   const end = document.getElementById("hud-end"), undo = document.getElementById("hud-undo");
   if (!thumb || !row || !end || !undo) return;
-  if (PHONE.matches) {
+  if (HANDHELD()) {
     if (end.parentNode !== thumb) { thumb.append(undo, end); }
   } else if (end.parentNode !== row) {
     row.prepend(end, undo);
   }
+  /* the coach too: on a phone it comes out of the Field box to sit under
+     End turn, so a hint arriving or leaving moves nothing a thumb is on;
+     anywhere wider it goes back under the board */
+  const coach = document.getElementById("coach"), grid = document.getElementById("grid");
+  if (!coach || !grid) return;
+  if (HANDHELD()) { if (coach.previousElementSibling !== thumb) thumb.after(coach); }
+  else if (coach.previousElementSibling !== grid) grid.after(coach);
 }
 
 /* updateAll() replaces #grid.innerHTML wholesale, which destroys the focused
@@ -6198,8 +6247,11 @@ function renderTouchbar() {
   const el = document.getElementById("touchbar");
   if (!el) return;
   const u = UI.sel ? byUid(G, UI.sel) : null;
-  if (!u || !canTurnNow(u)) { el.hidden = true; el.innerHTML = ""; return; }
-  const arm = dir => `<button class="turnbtn" data-act="rot${dir === "left" ? "L" : "R"}"
+  if (!u || !u.alive || UI.curtain) { el.hidden = true; el.innerHTML = ""; return; }
+  /* any selected unit: on a phone the Unit box is under the field report,
+     so the bar carries its strength; the arrows work when it can turn */
+  const can = canTurnNow(u);
+  const arm = dir => `<button class="turnbtn" data-act="rot${dir === "left" ? "L" : "R"}"${can ? "" : " disabled"}
     aria-label="Turn ${esc(defOf(u).name)} ${dir}">
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path class="arc" d="${ROT_ARC[dir]}"/><path class="head" d="${ROT_HEAD[dir]}"/>
@@ -6207,7 +6259,7 @@ function renderTouchbar() {
   el.hidden = false;
   el.innerHTML = `${arm("left")}
     <span class="turn-who"><span class="side s${u.side}">${esc(defOf(u).name)}</span>
-      <span class="dim">facing ${esc(FACE_NAMES[u.face])}</span></span>
+      <span class="dim">facing ${esc(FACE_NAMES[u.face])} · ${u.figs} of ${perBaseOf(u.type)} · ${diceFor(u)} dice</span></span>
     ${arm("right")}`;
 }
 
@@ -6531,9 +6583,12 @@ function renderDeployBar() {
       <span class="dim">Their plan is behind the screen until both are laid.</span></p>
     ${opening ? `<p class="dep-opening"><span class="box-label-ish">${esc(opening.name)}</span>
       <span class="dim">${esc(opening.note)}</span></p>` : ""}
-    <p class="dim">Drag a base where you want it, or click it and then the square &mdash;
+    ${window.matchMedia("(pointer: fine)").matches
+      ? `<p class="dim">Drag a base where you want it, or click it and then the square &mdash;
       dropping it on one of your own swaps the two. The small arrows in a selected base's
-      front corners turn it.</p>
+      front corners turn it.</p>`
+      : `<p class="dim">Tap a base, then the square it goes to &mdash; tapping one of your
+      own swaps the two. The arrows under the board turn the base you picked.</p>`}
     <div class="muster-actions">
       <button class="btn" data-act="deployAuto">Re-form the line</button>
       <button class="btn btn-go" data-act="deployReady">Take the field</button>
@@ -7907,6 +7962,7 @@ function boot() {
   renderScene();
   placeThumbCmds();
   PHONE.addEventListener("change", () => { placeThumbCmds(); placeFrame(); });
+  SIDEWAYS.addEventListener("change", () => { placeThumbCmds(); placeFrame(); });
   window.addEventListener("resize", placeFrame);
   if (window.ResizeObserver) new ResizeObserver(placeFrame).observe(document.getElementById("app"));
   validateTables();
